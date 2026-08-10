@@ -286,6 +286,13 @@ acontece no backend, o frontend só repassa o que a pessoa digitou.
       (Render, Railway, Fly.io, VPS — não funciona em hosting puramente
       estático); o frontend pode ir para Vercel/Netlify apontando
       `VITE_API_URL` para a URL pública do backend
+- [ ] `SENDGRID_FROM` está verificado por Single Sender (Gmail), não por
+      Domain Authentication — sem domínio próprio autenticado via DNS
+      (SPF/DKIM), o Gmail não confia no remetente e os e-mails tendem a
+      cair em spam na primeira vez (o frontend já avisa pra checar a caixa
+      de spam). Decisão deliberada por enquanto: comprar/reaproveitar um
+      domínio e migrar para Domain Authentication na SendGrid resolve isso
+      de vez, mas foi adiado.
 
 ## Convenções de código
 - Componentes funcionais + hooks, sem classes
