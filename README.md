@@ -21,7 +21,7 @@ exposta no navegador:
 
 1. **Voz clonada (ElevenLabs)** — a chave da API fica só no servidor.
 2. **Verificação de e-mail para troca de PIN** — o backend gera o código,
-   envia por SMTP e confere a resposta; o código nunca é gerado nem
+   envia via SendGrid e confere a resposta; o código nunca é gerado nem
    validado no navegador.
 
 Sem o backend rodando, o app inteiro continua funcionando normalmente — só
@@ -60,10 +60,11 @@ Abra o endereço que o Vite mostrar (normalmente `http://localhost:5173`).
   interface (nesse caso o app usa automaticamente a última voz clonada,
   guardada em `backend/data/voice-config.json`). Preencha manualmente aqui
   se preferir usar uma voz já existente na sua conta ElevenLabs.
-- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` — para
-  o código de verificação de troca de PIN chegar de verdade por e-mail. Sem
-  isso, o código aparece na tela em modo de demonstração (só para
-  desenvolvimento local).
+- `SENDGRID_API_KEY` / `SENDGRID_FROM` — para o código de verificação de
+  troca de PIN chegar de verdade por e-mail (via API HTTP da SendGrid, não
+  SMTP — evita bloqueio de porta em hospedagens grátis). Sem isso, o código
+  aparece na tela em modo de demonstração (só para desenvolvimento local).
+  `SENDGRID_FROM` precisa ser um remetente verificado na sua conta SendGrid.
 
 Veja `CLAUDE.md` para detalhes de arquitetura, endpoints da API, decisões
 de design e pendências conhecidas.

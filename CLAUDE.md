@@ -32,9 +32,12 @@ Duas coisas exigem credencial secreta que não pode ficar no navegador:
 2. **Verificação de e-mail para troca de PIN** — antes o código de 6
    dígitos era gerado e comparado inteiramente no navegador (e o envio, se
    configurado, usava a Public Key do EmailJS exposta no cliente). Agora o
-   backend gera o código, guarda em memória com expiração, envia por SMTP
-   (nodemailer) e é o único lugar que confere se o código bate. O frontend
-   nunca vê nem gera o código de verdade.
+   backend gera o código, guarda em memória com expiração, envia via API
+   HTTP da SendGrid e é o único lugar que confere se o código bate. O
+   frontend nunca vê nem gera o código de verdade. (Antes usava SMTP via
+   `nodemailer`, mas hospedagens grátis como o Render costumam bloquear a
+   saída nas portas de SMTP — a requisição travava minutos até dar timeout.
+   HTTP na porta 443 não tem esse problema.)
 
 Sem o backend rodando, o resto do app continua funcionando normalmente —
 só esses dois recursos caem em fallback (voz padrão do aparelho / aviso
@@ -53,7 +56,7 @@ para checar se o backend está no ar).
 
 **Backend** (`backend/`)
 - Node 22 + Express 5, ESM (`"type": "module"`)
-- `nodemailer` — envio de e-mail via SMTP
+- Envio de e-mail via API HTTP da SendGrid (`fetch` nativo, sem SDK)
 - `dotenv` — variáveis de ambiente · `cors` — libera o frontend
 - `fetch` nativo do Node (sem `node-fetch`) para chamar o ElevenLabs
 
@@ -105,7 +108,7 @@ async function saveJSON(key, value) {
   a `imageData` quando os dois existem por algum motivo)
 - `teajudo:settings` — `{pin, dailyLimitMinutes, voiceEnabled, showTimer,
   securityConfigured, parentEmail}` — **não guarda mais chaves de API**
-  (ElevenLabs e SMTP/EmailJS foram para `backend/.env`)
+  (ElevenLabs e SendGrid/EmailJS foram para `backend/.env`)
 - `teajudo:logs` — últimos 400 eventos de uso: `{ts, type, buttonId,
   category, label}`
 - `teajudo:puzzle-results` — últimos 200 resultados de quebra-cabeça:
@@ -130,7 +133,7 @@ Todas as rotas sob `/api`. CORS liberado só para `CORS_ORIGIN` (padrão
 | `/api/health` | GET | — | `{ ok: true }` |
 | `/api/tts` | POST | `{ text }` | `{ audioBase64 }` |
 | `/api/tts/status` | GET | — | `{ configured: boolean }` |
-| `/api/auth/send-code` | POST | `{ email }` | `{ ok, demo, code? }` — `code` só vem preenchido se `demo: true` (SMTP não configurado) |
+| `/api/auth/send-code` | POST | `{ email }` | `{ ok, demo, code? }` — `code` só vem preenchido se `demo: true` (SendGrid não configurado) |
 | `/api/auth/verify-code` | POST | `{ email, code }` | `{ valid: boolean, reason? }` |
 | `/api/auth/status` | GET | — | `{ mailerConfigured: boolean }` |
 | `/api/voice/clone` | POST | multipart: `audio` (arquivo), `name` (opcional) | `{ ok, voiceId }` |
@@ -214,7 +217,7 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   quanto para "Esqueci o PIN" e troca voluntária. A configuração no
   primeiro acesso é **pulável** ("Configurar depois") — mesma filosofia de
   "sugestão gentil, não bloqueio duro" do limite de tempo.
-- **Chaves de API nunca ficam no frontend** — ElevenLabs e SMTP são
+- **Chaves de API nunca ficam no frontend** — ElevenLabs e SendGrid são
   configurados só em `backend/.env`. Isso foi uma migração deliberada: a
   primeira versão do app guardava essas chaves em `localStorage` (aceitável
   só para protótipo rápido), e essa versão corrige isso.
@@ -256,7 +259,7 @@ decidem o texto e para onde volta o botão cancelar.
 
 `SecuritySetup` tem 3 passos (`step`): `email` → `code` → `pin`.
 `handleSendCode` chama `POST /api/auth/send-code`; se a resposta vier com
-`demo: true` (SMTP não configurado no backend), mostra o código na tela.
+`demo: true` (SendGrid não configurado no backend), mostra o código na tela.
 `handleVerifyCode` chama `POST /api/auth/verify-code` — a validação real
 acontece no backend, o frontend só repassa o que a pessoa digitou.
 

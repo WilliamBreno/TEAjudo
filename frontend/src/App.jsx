@@ -1291,7 +1291,7 @@ function SecuritySetup({ settings, mode, onComplete, onCancel }) {
       <h2 className="text-xl font-bold mb-1">{titles[mode] || titles.first}</h2>
       <p className="text-[#5A5A5A] mb-6 text-sm">
         {step === 'email' && 'Informe o e-mail de um responsável para receber um código de verificação.'}
-        {step === 'code' && (demoCode ? 'SMTP não configurado no backend — use o código de teste abaixo.' : `Enviamos um código para ${email}.`)}
+        {step === 'code' && (demoCode ? 'Envio de e-mail não configurado no backend — use o código de teste abaixo.' : `Enviamos um código para ${email}.`)}
         {step === 'pin' && 'Código confirmado! Agora escolha o novo PIN de 4 dígitos.'}
       </p>
 

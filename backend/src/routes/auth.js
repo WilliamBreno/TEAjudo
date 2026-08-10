@@ -24,11 +24,12 @@ router.post('/send-code', async (req, res) => {
     return res.json({ ok: true, demo: false });
   }
 
-  // SMTP não configurado (ou falhou o envio): não deixamos o usuário travado.
-  // Devolvemos o código no corpo da resposta, claramente marcado como
-  // "demo" — isso só deve acontecer em desenvolvimento local. Em produção,
-  // configure SMTP_HOST/PORT/USER/PASS no .env para nunca cair aqui.
-  console.warn(`[demo mode] Código para ${email}: ${code} (SMTP não configurado ou falhou)`);
+  // SendGrid não configurado (ou falhou o envio): não deixamos o usuário
+  // travado. Devolvemos o código no corpo da resposta, claramente marcado
+  // como "demo" — isso só deve acontecer em desenvolvimento local. Em
+  // produção, configure SENDGRID_API_KEY/SENDGRID_FROM no .env para nunca
+  // cair aqui.
+  console.warn(`[demo mode] Código para ${email}: ${code} (SendGrid não configurado ou falhou)`);
   return res.json({ ok: true, demo: true, code, reason: result.reason });
 });
 
