@@ -1770,20 +1770,28 @@ function VoiceRecorder({ onCloned }) {
     if (!audioBlobRef.current) return;
     setUploading(true);
     setError('');
+    const form = new FormData();
+    form.append('audio', audioBlobRef.current, 'voz-crianca.webm');
+    form.append('name', 'TEAjudo - voz da criança');
+    let resp;
     try {
-      const form = new FormData();
-      form.append('audio', audioBlobRef.current, 'voz-crianca.webm');
-      form.append('name', 'TEAjudo - voz da criança');
-      const resp = await fetch(`${API_URL}/api/voice/clone`, { method: 'POST', body: form });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || 'status ' + resp.status);
-      setSuccess(true);
-      onCloned?.();
-    } catch (e) {
-      setError('Não foi possível clonar a voz agora — confira se o backend está rodando e se a chave do ElevenLabs está configurada em backend/.env.');
-    } finally {
+      resp = await fetch(`${API_URL}/api/voice/clone`, { method: 'POST', body: form });
+    } catch (networkErr) {
+      // Falha de rede de verdade (backend fora do ar, URL errada, CORS) — não veio
+      // resposta nenhuma do servidor, então não há mensagem de erro dele pra mostrar.
+      setError(`Não foi possível conectar ao backend em ${API_URL} — confira se ele está rodando e acessível.`);
       setUploading(false);
+      return;
     }
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setError(data.error || `O servidor recusou o áudio (status ${resp.status}).`);
+      setUploading(false);
+      return;
+    }
+    setSuccess(true);
+    onCloned?.();
+    setUploading(false);
   }
 
   return (
