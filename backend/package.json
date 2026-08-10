@@ -1,0 +1,19 @@
+{
+  "name": "teajudo-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend do TEAjudo: proxy seguro para voz clonada (ElevenLabs) e verificacao de PIN por e-mail.",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.4"
+  }
+}

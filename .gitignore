@@ -1,0 +1,9 @@
+# Segurança extra além dos .gitignore de frontend/ e backend/
+**/node_modules
+**/dist
+**/.env
+**/*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
