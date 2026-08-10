@@ -17,6 +17,12 @@ if (smtpConfigured) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // O padrão do nodemailer é ~2min antes de desistir — tempo demais para
+    // deixar o pai esperando na tela. Se a porta SMTP estiver bloqueada
+    // (comum em hospedagens grátis), falha rápido e cai no modo demo.
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 8000,
   });
 }
 
