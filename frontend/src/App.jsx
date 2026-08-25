@@ -146,17 +146,27 @@ const GLOBAL_STYLES = `
   }
   .tea-eq-bar { width: 3px; border-radius: 2px; animation: teaEqBounce 0.5s ease-in-out infinite; }
 
-  /* Glow mais forte no hover do estilo "fluido" — inline style (que carrega
-     a cor por botão) não suporta :hover, então isso mora numa classe CSS
-     que lê as custom properties --tea-color/--tea-glow-hover setadas
-     inline; !important porque regra de classe só vence style inline com
-     !important. */
-  .tea-card-fluido {
-    transition: box-shadow 200ms ease, border-color 200ms ease;
+  /* Estilo "tátil": pseudo-classes (:active, :focus-visible) e a transição
+     de box-shadow não dá pra fazer em style inline (que carrega a cor por
+     botão) — moram numa regra CSS via [data-style="tatil"]. A transição
+     redeclara transform (que a classe utilitária Tailwind já anima) junto
+     com box-shadow, listados nessa ordem, porque a propriedade shorthand
+     "transition" sobrescreve por completo o que já estava — se listasse só
+     box-shadow, a transição de escala do toque pararia de funcionar aqui.
+     :focus-visible precisa de !important pra vencer o boxShadow inline. */
+  button[data-style="tatil"] {
+    transition-property: transform, box-shadow;
+    transition-duration: 150ms, 160ms;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1), ease;
   }
-  .tea-card-fluido:hover {
-    border-color: var(--tea-color) !important;
-    box-shadow: 0 0 32px var(--tea-glow-hover) !important;
+  button[data-style="tatil"]:active {
+    filter: brightness(0.96);
+  }
+  button[data-style="tatil"]:focus-visible {
+    box-shadow:
+      0 0 0 3px #FAF7F2,
+      0 0 0 6px var(--tea-color),
+      7px 7px 16px rgba(0,0,0,0.16) !important;
   }
 
   /* Halo/ícone/fagulhas: classe "base" = aparência estática (sempre que
@@ -225,7 +235,7 @@ const DEFAULT_SETTINGS = {
   showTimer: false,
   securityConfigured: false,
   parentEmail: '',
-  buttonStyle: 'nitido', // 'tatil' | 'fluido' | 'nitido' — só o "material" visual do botão
+  buttonStyle: 'nitido', // 'tatil' | 'nitido' — só o "material" visual do botão
   reduceMotion: false,
   // Desligado por padrão de propósito: o painel da criança normalmente não
   // tem nenhuma animação contínua/ambiente (só reage a toques reais), por
@@ -237,7 +247,6 @@ const DEFAULT_SETTINGS = {
 
 const BUTTON_STYLE_OPTIONS = [
   { key: 'tatil', label: 'Tátil' },
-  { key: 'fluido', label: 'Fluido' },
   { key: 'nitido', label: 'Nítido' },
 ];
 
@@ -318,11 +327,6 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// Mesmo valor do utilitário Tailwind `shadow-md` — usado explicitamente nos
-// estilos de botão porque um `boxShadow` inline (para somar o glow colorido)
-// substitui por completo o box-shadow da classe, não soma com ela.
-const SHADOW_MD = '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)';
-
 // Detecta a preferência de "reduzir movimento" do sistema operacional, para
 // desativar automaticamente o pacote de efeitos de toque mesmo se o toggle
 // manual (settings.reduceMotion) estiver desligado.
@@ -364,21 +368,8 @@ function getConfettiPieces(color) {
 }
 
 // Calcula o "material" visual do cartão do botão (fundo, borda, sombra) para
-// cada um dos 3 estilos — a cor em si (categoria/Fitzgerald Key) não muda.
+// cada um dos 2 estilos — a cor em si (categoria/Fitzgerald Key) não muda.
 function getButtonCardStyle(buttonStyle, color) {
-  if (buttonStyle === 'fluido') {
-    return {
-      backgroundColor: '#14151A',
-      backgroundImage: `linear-gradient(${hexToRgba(color, 0.16)}, ${hexToRgba(color, 0.16)})`,
-      border: `1.5px solid ${hexToRgba(color, 0.55)}`,
-      boxShadow: `0 0 18px ${hexToRgba(color, 0.35)}`,
-      // Consumidos pela regra `.tea-card-fluido:hover` em GLOBAL_STYLES —
-      // inline style não suporta :hover, então o glow mais forte no hover
-      // vem de uma classe CSS que lê essas custom properties.
-      '--tea-color': color,
-      '--tea-glow-hover': hexToRgba(color, 0.35),
-    };
-  }
   if (buttonStyle === 'nitido') {
     return {
       backgroundColor: '#fff',
@@ -386,11 +377,16 @@ function getButtonCardStyle(buttonStyle, color) {
       boxShadow: `0 6px 16px ${hexToRgba(color, 0.16)}`,
     };
   }
-  // tatil (evolução do visual original)
+  // tatil — neumórfico: sombra escura embaixo/direita + luz em cima/esquerda
+  // + glow colorido. `--tea-color` é consumido pelas regras
+  // `[data-style="tatil"]:active/:focus-visible` em GLOBAL_STYLES (inline
+  // style não suporta pseudo-classe).
   return {
-    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.18)}, ${color}, ${shadeColor(color, 0.16)})`,
+    borderRadius: '26px',
+    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.22)} 0%, ${color} 55%, ${shadeColor(color, 0.16)} 100%)`,
     border: `3px solid ${shadeColor(color, 0.22)}`,
-    boxShadow: `${SHADOW_MD}, 0 0 22px ${hexToRgba(color, 0.35)}`,
+    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 22px ${hexToRgba(color, 0.35)}`,
+    '--tea-color': color,
   };
 }
 
@@ -570,7 +566,11 @@ export default function TEAjudoApp() {
         loadJSON('teajudo:daily-usage', { date: todayKey(), seconds: 0 }),
       ]);
       setButtons(b);
-      setSettings({ ...DEFAULT_SETTINGS, ...s });
+      // 'fluido' foi removido — qualquer valor salvo que não seja 'tatil'
+      // cai em 'nitido' (fallback seguro pra quem já tinha algo salvo).
+      const mergedSettings = { ...DEFAULT_SETTINGS, ...s };
+      if (mergedSettings.buttonStyle !== 'tatil') mergedSettings.buttonStyle = 'nitido';
+      setSettings(mergedSettings);
       setLogs(l);
       setPuzzleResults(p);
       setMemoryResults(m);
@@ -933,28 +933,20 @@ function ChildPanel({
           // ou do SO) eles continuam visíveis, só param (ver GLOBAL_STYLES).
           const renderIdle = !!idleDecorations;
           const animateIdle = renderIdle && !effectiveReduceMotion;
-          const textColor = buttonStyle === 'fluido'
-            ? '#F4F4F5'
-            : buttonStyle === 'nitido'
-              ? '#292524'
-              : getContrastText(color);
-          // No nítido a flutuação vai no chip (abaixo), não aqui, senão o
-          // ícone flutuaria dentro de um chip parado — duplicado/estranho.
-          // Durante o toque (showEffects), o wiggle tem prioridade sobre o
-          // flutuar contínuo — as duas não tocam ao mesmo tempo no mesmo nó.
-          const iconFloatClass = animateIdle && !showEffects && buttonStyle !== 'nitido' ? ' tea-icon-float' : '';
-          const iconWiggleClass = showEffects ? ' tea-icon-wiggle' : '';
+          const textColor = buttonStyle === 'nitido' ? '#292524' : getContrastText(color);
+          // Flutuar/wiggle do ícone vivem só no badge circular (abaixo), nos
+          // dois estilos — nunca no <img>/emoji cru. Durante o toque
+          // (showEffects) o wiggle tem prioridade sobre o flutuar contínuo;
+          // as duas não tocam ao mesmo tempo no mesmo nó.
+          const badgeMotionClass = showEffects ? ' tea-icon-wiggle' : (animateIdle ? ' tea-icon-float' : '');
           const media = b.imageData
-            ? (
-              <img
-                src={b.imageData}
-                alt={b.label}
-                className={(buttonStyle === 'nitido'
-                  ? 'w-7 h-7 object-cover rounded-full'
-                  : 'w-14 h-14 object-cover rounded-xl border-2 border-white/80 shadow-sm') + iconFloatClass + iconWiggleClass}
-              />
-            )
-            : <span className={(buttonStyle === 'nitido' ? 'text-2xl' : 'text-4xl drop-shadow-sm') + iconFloatClass + iconWiggleClass}>{b.emoji}</span>;
+            ? <img src={b.imageData} alt={b.label} className="w-7 h-7 object-cover rounded-full" />
+            : <span className="text-2xl">{b.emoji}</span>;
+          // No tátil o fundo do próprio cartão já É a cor da categoria — a
+          // fagulha usa getContrastText (mesma lógica do label) pra não
+          // ficar quase invisível sobre um fundo da própria cor. No nítido
+          // o cartão é branco e a cor crua já lê bem, então mantém.
+          const sparkColor = buttonStyle === 'tatil' ? textColor : color;
 
           const hasEntered = enteredIds.has(b.id);
           return (
@@ -962,7 +954,7 @@ function ChildPanel({
               key={b.id}
               data-style={buttonStyle}
               onClick={() => onPlay(b)}
-              className={`${hasEntered ? '' : 'tea-popin '}relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${buttonStyle === 'fluido' ? 'tea-card-fluido' : ''} ${showEffects ? 'tea-btn-bounce' : ''}`}
+              className={`${hasEntered ? '' : 'tea-popin '}relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${showEffects ? 'tea-btn-bounce' : ''}`}
               style={{
                 ...getButtonCardStyle(buttonStyle, color),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
@@ -1002,24 +994,22 @@ function ChildPanel({
                 )
               )}
 
-              {buttonStyle === 'nitido'
-                ? (
-                  <div
-                    className={`w-[46px] h-[46px] rounded-full flex items-center justify-center${iconFloatClass}${iconWiggleClass}`}
-                    style={{ backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})` }}
-                  >
-                    {media}
-                  </div>
-                )
-                : media}
+              <div
+                className={`w-[46px] h-[46px] rounded-full flex items-center justify-center relative${badgeMotionClass}`}
+                style={buttonStyle === 'nitido'
+                  ? { backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})` }
+                  : { backgroundColor: 'rgba(255,255,255,0.35)', color: textColor }}
+              >
+                {media}
+              </div>
               <span className="text-sm font-bold text-center px-1" style={{ color: textColor }}>
                 {b.label}
               </span>
 
               {renderIdle && (
                 <>
-                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ top: 8, right: 10, color, animationDelay: `${(i % 5) * 300}ms` }}>✦</span>
-                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ bottom: 8, left: 10, color, animationDelay: `${(i % 5) * 300 + 900}ms` }}>✦</span>
+                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ top: 8, right: 10, color: sparkColor, animationDelay: `${(i % 5) * 300}ms` }}>✦</span>
+                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ bottom: 8, left: 10, color: sparkColor, animationDelay: `${(i % 5) * 300 + 900}ms` }}>✦</span>
                 </>
               )}
 
