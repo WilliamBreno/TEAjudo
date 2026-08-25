@@ -839,6 +839,18 @@ function ChildPanel({
   const filtered = filter === 'todos' ? visibleButtons : visibleButtons.filter((b) => b.category === filter);
   const prefersReducedMotion = usePrefersReducedMotion();
   const effectiveReduceMotion = reduceMotion || prefersReducedMotion;
+  // `tea-popin` (entrada) e `tea-btn-bounce` (toque) são duas classes que
+  // definem a mesma propriedade CSS `animation` no mesmo botão. Enquanto
+  // `tea-popin` continuasse na lista de classes para sempre, remover
+  // `tea-btn-bounce` ao fim do toque fazia o navegador reavaliar a cascata
+  // e "reiniciar" `teaPopIn` do zero (que começa em opacity:0) — o botão
+  // piscava invisível por um instante. Solução: tirar `tea-popin` da lista
+  // de classes assim que ela termina de tocar uma única vez, pra nunca mais
+  // poder brigar com outra animação depois.
+  const [enteredIds, setEnteredIds] = useState(() => new Set());
+  const markEntered = useCallback((id) => {
+    setEnteredIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
 
   return (
     <div className="max-w-3xl mx-auto px-4 pt-6">
@@ -944,16 +956,20 @@ function ChildPanel({
             )
             : <span className={(buttonStyle === 'nitido' ? 'text-2xl' : 'text-4xl drop-shadow-sm') + iconFloatClass + iconWiggleClass}>{b.emoji}</span>;
 
+          const hasEntered = enteredIds.has(b.id);
           return (
             <button
               key={b.id}
               data-style={buttonStyle}
               onClick={() => onPlay(b)}
-              className={`tea-popin relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${buttonStyle === 'fluido' ? 'tea-card-fluido' : ''} ${showEffects ? 'tea-btn-bounce' : ''}`}
+              className={`${hasEntered ? '' : 'tea-popin '}relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${buttonStyle === 'fluido' ? 'tea-card-fluido' : ''} ${showEffects ? 'tea-btn-bounce' : ''}`}
               style={{
                 ...getButtonCardStyle(buttonStyle, color),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
                 transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+              }}
+              onAnimationEnd={(e) => {
+                if (e.animationName === 'teaPopIn' && e.target === e.currentTarget) markEntered(b.id);
               }}
             >
               {renderIdle && (
