@@ -47,6 +47,65 @@ const GLOBAL_STYLES = `
     100% { transform: translateY(220px) rotate(540deg); opacity: 0; }
   }
 
+  /* Efeito de toque do ChildPanel (botões AAC) — pacote separado do
+     confete de vitória dos jogos (teaConfettiFall), que fica intacto. */
+  @keyframes teaBtnBounce {
+    0% { transform: scale(1) rotate(0deg); }
+    30% { transform: scale(0.86) rotate(-3deg); }
+    55% { transform: scale(1.18) rotate(3deg); }
+    80% { transform: scale(0.97) rotate(-1deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  @keyframes teaIconWiggle {
+    0% { transform: rotate(0) scale(1); }
+    25% { transform: rotate(-16deg) scale(1.15); }
+    50% { transform: rotate(14deg) scale(1.2); }
+    75% { transform: rotate(-6deg) scale(1.05); }
+    100% { transform: rotate(0) scale(1); }
+  }
+  @keyframes teaRingBurst {
+    0% { transform: scale(1); opacity: 0.9; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes teaShineSweep {
+    0% { transform: translateX(-120%) skewX(-20deg); opacity: 0; }
+    15% { opacity: 1; }
+    100% { transform: translateX(160%) skewX(-20deg); opacity: 0; }
+  }
+  @keyframes teaConfettiBurst {
+    0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(var(--rot)) scale(0.4); opacity: 0; }
+  }
+  @keyframes teaStarPop {
+    0% { transform: translate(-50%, 0) scale(0.3) rotate(var(--rot, 0deg)); opacity: 0; }
+    30% { transform: translate(-50%, -12px) scale(1.25) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-50%, -42px) scale(0.85) rotate(var(--rot, 0deg)); opacity: 0; }
+  }
+  @keyframes teaEqBounce {
+    0%, 100% { height: 3px; }
+    50% { height: 13px; }
+  }
+
+  /* Decoração ambiente opcional (settings.idleDecorations, desligada por
+     padrão — ver comentário em DEFAULT_SETTINGS) — halo, flutuar do ícone
+     e estrelinhas piscando, contínuos enquanto o botão está em repouso.
+     Cada elemento tem uma classe "base" (aparência estática, sempre
+     presente quando idleDecorations está ligado) e uma classe extra que só
+     adiciona a animação — assim, com reduceMotion ligado, os elementos
+     continuam visíveis, só param de se mover, em vez de sumir. */
+  @keyframes teaOrbBreathe {
+    0%, 100% { opacity: 0.28; }
+    50% { opacity: 0.5; }
+  }
+  @keyframes teaIconFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  @keyframes teaSparkTwinkle {
+    0%, 100% { opacity: 0.15; transform: scale(0.8); }
+    50% { opacity: 0.95; transform: scale(1.15); }
+  }
+
   .tea-popin { animation: teaPopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
   .tea-fadein { animation: teaFadeInUp 0.3s ease-out both; }
   .tea-pulse-ring { animation: teaPulseRing 1.1s ease-out infinite; }
@@ -59,8 +118,68 @@ const GLOBAL_STYLES = `
   }
   .tea-confetti-piece { position: absolute; top: 0; animation: teaConfettiFall 1.4s ease-in forwards; border-radius: 2px; }
 
+  .tea-btn-bounce { animation: teaBtnBounce 0.6s cubic-bezier(.34,1.56,.64,1) both; }
+  .tea-icon-wiggle { animation: teaIconWiggle 0.52s ease-in-out both; }
+  .tea-ring-burst, .tea-ring-burst-2, .tea-ring-burst-3 {
+    position: absolute; inset: 0; border-radius: inherit;
+    border-width: 3px; border-style: solid;
+    animation: teaRingBurst 0.6s ease-out forwards;
+    pointer-events: none;
+  }
+  .tea-ring-burst-2 { animation-delay: 110ms; }
+  .tea-ring-burst-3 { animation-delay: 220ms; border-width: 2px; }
+  .tea-shine-sweep {
+    position: absolute; top: 0; left: 0; width: 35%; height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,.85), transparent);
+    animation: teaShineSweep 0.6s ease-out forwards;
+    pointer-events: none;
+  }
+  .tea-confetti-burst {
+    position: absolute; top: 50%; left: 50%; border-radius: 2px;
+    animation: teaConfettiBurst 0.7s ease-out forwards;
+    pointer-events: none;
+  }
+  .tea-star-pop {
+    position: absolute; top: 0; font-size: 1.1rem; line-height: 1;
+    animation: teaStarPop 0.9s ease-out forwards;
+    pointer-events: none;
+  }
+  .tea-eq-bar { width: 3px; border-radius: 2px; animation: teaEqBounce 0.5s ease-in-out infinite; }
+
+  /* Glow mais forte no hover do estilo "fluido" — inline style (que carrega
+     a cor por botão) não suporta :hover, então isso mora numa classe CSS
+     que lê as custom properties --tea-color/--tea-glow-hover setadas
+     inline; !important porque regra de classe só vence style inline com
+     !important. */
+  .tea-card-fluido {
+    transition: box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .tea-card-fluido:hover {
+    border-color: var(--tea-color) !important;
+    box-shadow: 0 0 32px var(--tea-glow-hover) !important;
+  }
+
+  /* Halo/ícone/fagulhas: classe "base" = aparência estática (sempre que
+     idleDecorations está ligado); classe "-anim" = só ela adiciona o
+     movimento (só entra quando reduceMotion também está desligado). */
+  .tea-orb-halo {
+    position: absolute; inset: -16px; border-radius: inherit;
+    filter: blur(20px); opacity: 0.4; pointer-events: none;
+    z-index: -1; /* fica atrás do conteúdo do botão (ícone/label), que não é posicionado */
+  }
+  .tea-orb-halo-anim { animation: teaOrbBreathe 3.2s ease-in-out infinite; }
+  .tea-icon-float { animation: teaIconFloat 3s ease-in-out infinite; }
+  .tea-spark {
+    position: absolute; font-size: 0.7rem; line-height: 1; opacity: 0.5;
+    pointer-events: none;
+  }
+  .tea-spark-anim { animation: teaSparkTwinkle 2.4s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce) {
-    .tea-popin, .tea-fadein, .tea-pulse-ring, .tea-shimmer-btn::after, .tea-confetti-piece {
+    .tea-popin, .tea-fadein, .tea-pulse-ring, .tea-shimmer-btn::after, .tea-confetti-piece,
+    .tea-btn-bounce, .tea-icon-wiggle, .tea-ring-burst, .tea-ring-burst-2, .tea-ring-burst-3,
+    .tea-shine-sweep, .tea-confetti-burst, .tea-star-pop, .tea-eq-bar,
+    .tea-orb-halo-anim, .tea-icon-float, .tea-spark-anim {
       animation: none !important;
       opacity: 1 !important;
       transform: none !important;
@@ -106,7 +225,28 @@ const DEFAULT_SETTINGS = {
   showTimer: false,
   securityConfigured: false,
   parentEmail: '',
+  buttonStyle: 'nitido', // 'tatil' | 'fluido' | 'nitido' — só o "material" visual do botão
+  reduceMotion: false,
+  // Desligado por padrão de propósito: o painel da criança normalmente não
+  // tem nenhuma animação contínua/ambiente (só reage a toques reais), por
+  // ser potencialmente sobre-estimulante sensorialmente. Isso é uma exceção
+  // opcional, que só os pais/terapeuta ativam se avaliarem que cabe bem
+  // para aquela criança específica.
+  idleDecorations: false,
 };
+
+const BUTTON_STYLE_OPTIONS = [
+  { key: 'tatil', label: 'Tátil' },
+  { key: 'fluido', label: 'Fluido' },
+  { key: 'nitido', label: 'Nítido' },
+];
+
+// Posições horizontais/ângulos/atrasos das 3 estrelinhas do efeito de toque.
+const STAR_POP_POSITIONS = [
+  { left: '32%', rotate: -18, delay: 0 },
+  { left: '50%', rotate: 6, delay: 90 },
+  { left: '68%', rotate: 20, delay: 170 },
+];
 
 const BUILTIN_PUZZLE_SUBJECTS = [
   { key: 'sol', emoji: '☀️', label: 'Sol', bg: '#FFE9B8' },
@@ -157,6 +297,101 @@ function shadeColor(hex, amount) {
   const g = Math.max(0, Math.round(parseInt(c.substring(2, 4), 16) * (1 - amount)));
   const b = Math.max(0, Math.round(parseInt(c.substring(4, 6), 16) * (1 - amount)));
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Clareia uma cor hex em `amount` (0-1), misturando com branco — usado nos
+// gradientes dos estilos de botão "tátil" e "nítido".
+function lightenColor(hex, amount) {
+  const c = hex.replace('#', '');
+  const mix = (channel) => {
+    const v = parseInt(c.substring(channel, channel + 2), 16);
+    return Math.min(255, Math.round(v + (255 - v) * amount));
+  };
+  return `#${[mix(0), mix(2), mix(4)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Mesmo valor do utilitário Tailwind `shadow-md` — usado explicitamente nos
+// estilos de botão porque um `boxShadow` inline (para somar o glow colorido)
+// substitui por completo o box-shadow da classe, não soma com ela.
+const SHADOW_MD = '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)';
+
+// Detecta a preferência de "reduzir movimento" do sistema operacional, para
+// desativar automaticamente o pacote de efeitos de toque mesmo se o toggle
+// manual (settings.reduceMotion) estiver desligado.
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = (e) => setReduced(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return reduced;
+}
+
+// Gera as posições (fixas, não aleatórias) dos confetes do efeito de toque,
+// em leque a partir do centro do botão — determinístico para não "pular"
+// se o componente re-renderizar enquanto a animação ainda está rodando.
+// 14 ângulos cobrindo o leque de -85° a 85° (acima do botão).
+const CONFETTI_ANGLES = Array.from({ length: 14 }, (_, i) => -85 + i * (170 / 13));
+function getConfettiPieces(color) {
+  const palette = [color, lightenColor(color, 0.35), shadeColor(color, 0.2), '#FFD93D', '#FFFFFF'];
+  return CONFETTI_ANGLES.map((deg, i) => {
+    const rad = (deg * Math.PI) / 180;
+    const dist = 42 + (i % 3) * 12;
+    return {
+      tx: Math.sin(rad) * dist,
+      ty: -Math.cos(rad) * dist,
+      rot: deg * 4,
+      color: palette[i % palette.length],
+      size: 5 + (i % 3) * 2,
+      delay: (i % 4) * 25,
+    };
+  });
+}
+
+// Calcula o "material" visual do cartão do botão (fundo, borda, sombra) para
+// cada um dos 3 estilos — a cor em si (categoria/Fitzgerald Key) não muda.
+function getButtonCardStyle(buttonStyle, color) {
+  if (buttonStyle === 'fluido') {
+    return {
+      backgroundColor: '#14151A',
+      backgroundImage: `linear-gradient(${hexToRgba(color, 0.16)}, ${hexToRgba(color, 0.16)})`,
+      border: `1.5px solid ${hexToRgba(color, 0.55)}`,
+      boxShadow: `0 0 18px ${hexToRgba(color, 0.35)}`,
+      // Consumidos pela regra `.tea-card-fluido:hover` em GLOBAL_STYLES —
+      // inline style não suporta :hover, então o glow mais forte no hover
+      // vem de uma classe CSS que lê essas custom properties.
+      '--tea-color': color,
+      '--tea-glow-hover': hexToRgba(color, 0.35),
+    };
+  }
+  if (buttonStyle === 'nitido') {
+    return {
+      backgroundColor: '#fff',
+      border: '1px solid #E7E5E4',
+      boxShadow: `0 6px 16px ${hexToRgba(color, 0.16)}`,
+    };
+  }
+  // tatil (evolução do visual original)
+  return {
+    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.18)}, ${color}, ${shadeColor(color, 0.16)})`,
+    border: `3px solid ${shadeColor(color, 0.22)}`,
+    boxShadow: `${SHADOW_MD}, 0 0 22px ${hexToRgba(color, 0.35)}`,
+  };
 }
 
 function makePuzzleImage(subject) {
@@ -479,6 +714,10 @@ export default function TEAjudoApp() {
           readinessReady={!!readiness?.ready}
           onOpenGames={() => setView('games')}
           onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
+          buttonStyle={settings.buttonStyle}
+          reduceMotion={settings.reduceMotion}
+          idleDecorations={settings.idleDecorations}
+          onChangeStyle={(patch) => persistSettings({ ...settings, ...patch })}
         />
       )}
 
@@ -591,10 +830,15 @@ function BreakOverlay({ onContinue, pin }) {
 
 /* ---------- Painel principal (criança) ---------- */
 
-function ChildPanel({ buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate }) {
+function ChildPanel({
+  buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
+  buttonStyle, reduceMotion, onChangeStyle, idleDecorations,
+}) {
   const [filter, setFilter] = useState('todos');
   const visibleButtons = buttons.filter((b) => !b.locked);
   const filtered = filter === 'todos' ? visibleButtons : visibleButtons.filter((b) => b.category === filter);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const effectiveReduceMotion = reduceMotion || prefersReducedMotion;
 
   return (
     <div className="max-w-3xl mx-auto px-4 pt-6">
@@ -614,6 +858,29 @@ function ChildPanel({ buttons, onPlay, playingId, voiceNotice, readinessReady, o
             )}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {BUTTON_STYLE_OPTIONS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => onChangeStyle({ buttonStyle: opt.key })}
+            className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-300"
+            style={buttonStyle === opt.key
+              ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
+              : { backgroundColor: '#fff', borderColor: '#DDD', color: '#5A5A5A' }}
+          >
+            {opt.label}
+          </button>
+        ))}
+        <label className="flex items-center gap-1.5 text-sm text-[#5A5A5A] ml-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={reduceMotion}
+            onChange={(e) => onChangeStyle({ reduceMotion: e.target.checked })}
+          />
+          Reduzir animações
+        </label>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-5">
@@ -647,31 +914,132 @@ function ChildPanel({ buttons, onPlay, playingId, voiceNotice, readinessReady, o
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
         {filtered.map((b, i) => {
           const color = b.color || CATEGORY_META[b.category].color;
-          const textColor = getContrastText(color);
+          const isPlaying = playingId === b.id;
+          const showEffects = isPlaying && !effectiveReduceMotion;
+          // renderIdle: os elementos existem no DOM sempre que o toggle está
+          // ligado. animateIdle: só eles se movem — com reduceMotion (manual
+          // ou do SO) eles continuam visíveis, só param (ver GLOBAL_STYLES).
+          const renderIdle = !!idleDecorations;
+          const animateIdle = renderIdle && !effectiveReduceMotion;
+          const textColor = buttonStyle === 'fluido'
+            ? '#F4F4F5'
+            : buttonStyle === 'nitido'
+              ? '#292524'
+              : getContrastText(color);
+          // No nítido a flutuação vai no chip (abaixo), não aqui, senão o
+          // ícone flutuaria dentro de um chip parado — duplicado/estranho.
+          // Durante o toque (showEffects), o wiggle tem prioridade sobre o
+          // flutuar contínuo — as duas não tocam ao mesmo tempo no mesmo nó.
+          const iconFloatClass = animateIdle && !showEffects && buttonStyle !== 'nitido' ? ' tea-icon-float' : '';
+          const iconWiggleClass = showEffects ? ' tea-icon-wiggle' : '';
+          const media = b.imageData
+            ? (
+              <img
+                src={b.imageData}
+                alt={b.label}
+                className={(buttonStyle === 'nitido'
+                  ? 'w-7 h-7 object-cover rounded-full'
+                  : 'w-14 h-14 object-cover rounded-xl border-2 border-white/80 shadow-sm') + iconFloatClass + iconWiggleClass}
+              />
+            )
+            : <span className={(buttonStyle === 'nitido' ? 'text-2xl' : 'text-4xl drop-shadow-sm') + iconFloatClass + iconWiggleClass}>{b.emoji}</span>;
+
           return (
             <button
               key={b.id}
+              data-style={buttonStyle}
               onClick={() => onPlay(b)}
-              className={`tea-popin relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 shadow-md active:scale-90 transition-transform duration-150 ${playingId === b.id ? 'tea-pulse-ring' : ''}`}
+              className={`tea-popin relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${buttonStyle === 'fluido' ? 'tea-card-fluido' : ''} ${showEffects ? 'tea-btn-bounce' : ''}`}
               style={{
-                backgroundColor: color,
-                border: `3px solid ${shadeColor(color, 0.22)}`,
+                ...getButtonCardStyle(buttonStyle, color),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
                 transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
               }}
             >
-              {playingId === b.id && (
-                <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: textColor }} />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ backgroundColor: textColor }} />
-                </span>
+              {renderIdle && (
+                <span
+                  className={`tea-orb-halo${animateIdle ? ' tea-orb-halo-anim' : ''}`}
+                  style={{ backgroundImage: `radial-gradient(circle, ${color}, transparent 70%)` }}
+                />
               )}
-              {b.imageData
-                ? <img src={b.imageData} alt={b.label} className="w-14 h-14 object-cover rounded-xl border-2 border-white/80 shadow-sm" />
-                : <span className="text-4xl drop-shadow-sm">{b.emoji}</span>}
+
+              {buttonStyle === 'nitido' && (
+                <span className="absolute top-0 left-0 right-0 h-[3px] rounded-t-3xl" style={{ backgroundColor: color }} />
+              )}
+
+              {isPlaying && (
+                effectiveReduceMotion ? (
+                  <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: textColor }} />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ backgroundColor: textColor }} />
+                  </span>
+                ) : (
+                  <span className="absolute top-1.5 right-1.5 flex items-end gap-[2px] h-3.5">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <span
+                        key={idx}
+                        className="tea-eq-bar"
+                        style={{ backgroundColor: textColor, animationDelay: `${idx * 90}ms`, animationDuration: `${420 + idx * 40}ms` }}
+                      />
+                    ))}
+                  </span>
+                )
+              )}
+
+              {buttonStyle === 'nitido'
+                ? (
+                  <div
+                    className={`w-[46px] h-[46px] rounded-full flex items-center justify-center${iconFloatClass}${iconWiggleClass}`}
+                    style={{ backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})` }}
+                  >
+                    {media}
+                  </div>
+                )
+                : media}
               <span className="text-sm font-bold text-center px-1" style={{ color: textColor }}>
                 {b.label}
               </span>
+
+              {renderIdle && (
+                <>
+                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ top: 8, right: 10, color, animationDelay: `${(i % 5) * 300}ms` }}>✦</span>
+                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ bottom: 8, left: 10, color, animationDelay: `${(i % 5) * 300 + 900}ms` }}>✦</span>
+                </>
+              )}
+
+              {showEffects && (
+                <>
+                  <span className="tea-ring-burst" style={{ borderColor: color }} />
+                  <span className="tea-ring-burst-2" style={{ borderColor: color }} />
+                  <span className="tea-ring-burst-3" style={{ borderColor: color }} />
+                  <span className="tea-shine-sweep" />
+                  {getConfettiPieces(color).map((p, idx) => (
+                    <span
+                      key={idx}
+                      className="tea-confetti-burst"
+                      style={{
+                        width: p.size,
+                        height: p.size,
+                        backgroundColor: p.color,
+                        '--tx': `${p.tx}px`,
+                        '--ty': `${p.ty}px`,
+                        '--rot': `${p.rot}deg`,
+                        animationDelay: `${p.delay}ms`,
+                      }}
+                    />
+                  ))}
+                  {STAR_POP_POSITIONS.map((s, idx) => (
+                    <span
+                      key={idx}
+                      className="tea-star-pop"
+                      style={{ left: s.left, '--rot': `${s.rotate}deg`, animationDelay: `${s.delay}ms` }}
+                      aria-hidden="true"
+                    >
+                      ⭐
+                    </span>
+                  ))}
+                </>
+              )}
             </button>
           );
         })}
@@ -1911,6 +2279,18 @@ function SettingsPanel({ settings, onSave, onRequestPinChange }) {
           <input type="checkbox" checked={local.showTimer} onChange={(e) => update('showTimer', e.target.checked)} />
           Mostrar cronômetro durante o quebra-cabeça
         </label>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
+        <label className="flex items-center gap-2 mb-1">
+          <input type="checkbox" checked={!!local.idleDecorations} onChange={(e) => update('idleDecorations', e.target.checked)} />
+          Animações decorativas nos botões (ícone balançando, brilhos piscando)
+        </label>
+        <p className="text-xs text-[#999]">
+          Desligado por padrão: o painel normalmente só anima quando a criança toca em algo,
+          para não sobre-estimular. Ligue só se avaliar que um movimento suave e contínuo
+          nos botões funciona bem para o seu filho.
+        </p>
       </div>
 
       <button onClick={save} className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2.5 font-semibold transition-transform active:scale-95">
