@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Lock, Unlock, Plus, Trash2, X, Clock, Mic, ImagePlus, ChevronLeft, RotateCcw,
   Puzzle as PuzzleIcon, Sparkles, Mail,
+  Hand, User, Smile, CircleDot, MessageCircle, HelpCircle,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -125,6 +126,7 @@ const GLOBAL_STYLES = `
     border-width: 3px; border-style: solid;
     animation: teaRingBurst 0.6s ease-out forwards;
     pointer-events: none;
+    z-index: 2;
   }
   .tea-ring-burst-2 { animation-delay: 110ms; }
   .tea-ring-burst-3 { animation-delay: 220ms; border-width: 2px; }
@@ -133,16 +135,19 @@ const GLOBAL_STYLES = `
     background: linear-gradient(120deg, transparent, rgba(255,255,255,.85), transparent);
     animation: teaShineSweep 0.6s ease-out forwards;
     pointer-events: none;
+    z-index: 2;
   }
   .tea-confetti-burst {
     position: absolute; top: 50%; left: 50%; border-radius: 2px;
     animation: teaConfettiBurst 0.7s ease-out forwards;
     pointer-events: none;
+    z-index: 2;
   }
   .tea-star-pop {
     position: absolute; top: 0; font-size: 1.1rem; line-height: 1;
     animation: teaStarPop 0.9s ease-out forwards;
     pointer-events: none;
+    z-index: 2;
   }
   .tea-eq-bar { width: 3px; border-radius: 2px; animation: teaEqBounce 0.5s ease-in-out infinite; }
 
@@ -169,13 +174,30 @@ const GLOBAL_STYLES = `
       7px 7px 16px rgba(0,0,0,0.16) !important;
   }
 
+  /* Estilo "nítido": mesma lógica do tátil acima, mas aqui as duas
+     transições usam o mesmo "ease" — não tem o choque de curvas que o
+     tátil tem (bounce no transform x ease no box-shadow), então dá pra
+     usar a propriedade "transition" (shorthand) direto, sem precisar
+     separar em transition-property/duration/timing-function. */
+  button[data-style="nitido"] {
+    transition: box-shadow 160ms ease, transform 160ms ease;
+  }
+  button[data-style="nitido"]:hover {
+    box-shadow: 0 10px 24px var(--tea-glow) !important;
+    transform: translateY(-2px);
+  }
+  button[data-style="nitido"]:focus-visible {
+    box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--tea-color) !important;
+  }
+
   /* Halo/ícone/fagulhas: classe "base" = aparência estática (sempre que
      idleDecorations está ligado); classe "-anim" = só ela adiciona o
      movimento (só entra quando reduceMotion também está desligado). */
   .tea-orb-halo {
     position: absolute; inset: -16px; border-radius: inherit;
     filter: blur(20px); opacity: 0.4; pointer-events: none;
-    z-index: -1; /* fica atrás do conteúdo do botão (ícone/label), que não é posicionado */
+    /* sem z-index — fica atrás do badge/label (z-index:1) e do efeito de
+       toque (z-index:2), ver camadas no JSX do botão */
   }
   .tea-orb-halo-anim { animation: teaOrbBreathe 3.2s ease-in-out infinite; }
   .tea-icon-float { animation: teaIconFloat 3s ease-in-out infinite; }
@@ -208,6 +230,24 @@ const CATEGORY_META = {
   perguntas: { label: 'Perguntas', color: '#8B6BB1' },
   social: { label: 'Social', color: '#D66E96' },
 };
+
+// Ícone de linha (minimalista) por categoria — usado quando
+// settings.iconStyle === 'minimal', no lugar do emoji do botão. Só entra
+// em jogo pra botões sem foto (b.imageData); foto de um botão específico
+// sempre aparece, não tem "versão minimalista" de uma foto.
+const CATEGORY_ICONS = {
+  acoes: Hand,
+  pessoas: User,
+  objetos: CircleDot,
+  sentimentos: Smile,
+  perguntas: HelpCircle,
+  social: MessageCircle,
+};
+
+const ICON_STYLE_OPTIONS = [
+  { key: 'emoji', label: 'Emoji' },
+  { key: 'minimal', label: 'Minimalista' },
+];
 
 const DEFAULT_BUTTONS = [
   { id: 'b1', label: 'Quero', phrase: 'Eu quero', category: 'acoes', emoji: '🙋', locked: false },
@@ -243,6 +283,7 @@ const DEFAULT_SETTINGS = {
   // opcional, que só os pais/terapeuta ativam se avaliarem que cabe bem
   // para aquela criança específica.
   idleDecorations: false,
+  iconStyle: 'emoji', // 'emoji' | 'minimal' — só afeta botões sem foto própria
 };
 
 const BUTTON_STYLE_OPTIONS = [
@@ -372,9 +413,13 @@ function getConfettiPieces(color) {
 function getButtonCardStyle(buttonStyle, color) {
   if (buttonStyle === 'nitido') {
     return {
+      borderRadius: '18px',
       backgroundColor: '#fff',
       border: '1px solid #E7E5E4',
-      boxShadow: `0 6px 16px ${hexToRgba(color, 0.16)}`,
+      boxShadow: `0 6px 16px ${hexToRgba(color, 0.16)}, 0 1px 2px rgba(0,0,0,0.05)`,
+      // Consumidos por [data-style="nitido"]:hover/:focus-visible acima.
+      '--tea-color': color,
+      '--tea-glow': hexToRgba(color, 0.35),
     };
   }
   // tatil — neumórfico: sombra escura embaixo/direita + luz em cima/esquerda
@@ -717,6 +762,7 @@ export default function TEAjudoApp() {
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
           idleDecorations={settings.idleDecorations}
+          iconStyle={settings.iconStyle}
           onChangeStyle={(patch) => persistSettings({ ...settings, ...patch })}
         />
       )}
@@ -832,7 +878,7 @@ function BreakOverlay({ onContinue, pin }) {
 
 function ChildPanel({
   buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
-  buttonStyle, reduceMotion, onChangeStyle, idleDecorations,
+  buttonStyle, reduceMotion, onChangeStyle, idleDecorations, iconStyle,
 }) {
   const [filter, setFilter] = useState('todos');
   const visibleButtons = buttons.filter((b) => !b.locked);
@@ -895,6 +941,22 @@ function ChildPanel({
         </label>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-xs text-[#999]">Ícones:</span>
+        {ICON_STYLE_OPTIONS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => onChangeStyle({ iconStyle: opt.key })}
+            className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-300"
+            style={iconStyle === opt.key
+              ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
+              : { backgroundColor: '#fff', borderColor: '#DDD', color: '#5A5A5A' }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-2 mb-5">
         <button
           onClick={() => setFilter('todos')}
@@ -939,9 +1001,12 @@ function ChildPanel({
           // (showEffects) o wiggle tem prioridade sobre o flutuar contínuo;
           // as duas não tocam ao mesmo tempo no mesmo nó.
           const badgeMotionClass = showEffects ? ' tea-icon-wiggle' : (animateIdle ? ' tea-icon-float' : '');
+          const CategoryIcon = CATEGORY_ICONS[b.category];
           const media = b.imageData
             ? <img src={b.imageData} alt={b.label} className="w-7 h-7 object-cover rounded-full" />
-            : <span className="text-2xl">{b.emoji}</span>;
+            : iconStyle === 'minimal'
+              ? <CategoryIcon size={21} strokeWidth={2.25} />
+              : <span className="text-2xl">{b.emoji}</span>;
           // No tátil o fundo do próprio cartão já É a cor da categoria — a
           // fagulha usa getContrastText (mesma lógica do label) pra não
           // ficar quase invisível sobre um fundo da própria cor. No nítido
@@ -958,7 +1023,6 @@ function ChildPanel({
               style={{
                 ...getButtonCardStyle(buttonStyle, color),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
-                transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
               }}
               onAnimationEnd={(e) => {
                 if (e.animationName === 'teaPopIn' && e.target === e.currentTarget) markEntered(b.id);
@@ -972,17 +1036,17 @@ function ChildPanel({
               )}
 
               {buttonStyle === 'nitido' && (
-                <span className="absolute top-0 left-0 right-0 h-[3px] rounded-t-3xl" style={{ backgroundColor: color }} />
+                <span className="absolute top-0 left-3.5 right-3.5 h-[3px] rounded-[2px] z-[1]" style={{ backgroundColor: color }} />
               )}
 
               {isPlaying && (
                 effectiveReduceMotion ? (
-                  <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                  <span className="absolute top-1.5 right-1.5 z-[1] flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: textColor }} />
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ backgroundColor: textColor }} />
                   </span>
                 ) : (
-                  <span className="absolute top-1.5 right-1.5 flex items-end gap-[2px] h-3.5">
+                  <span className="absolute top-1.5 right-1.5 z-[1] flex items-end gap-[2px] h-3.5">
                     {[0, 1, 2, 3].map((idx) => (
                       <span
                         key={idx}
@@ -995,14 +1059,18 @@ function ChildPanel({
               )}
 
               <div
-                className={`w-[46px] h-[46px] rounded-full flex items-center justify-center relative${badgeMotionClass}`}
+                className={`w-[46px] h-[46px] rounded-full flex items-center justify-center relative z-[1]${badgeMotionClass}`}
                 style={buttonStyle === 'nitido'
-                  ? { backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})` }
+                  ? {
+                    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})`,
+                    color: '#fff',
+                    boxShadow: `0 3px 8px ${hexToRgba(color, 0.35)}`,
+                  }
                   : { backgroundColor: 'rgba(255,255,255,0.35)', color: textColor }}
               >
                 {media}
               </div>
-              <span className="text-sm font-bold text-center px-1" style={{ color: textColor }}>
+              <span className="relative z-[1] text-sm font-bold text-center px-1" style={{ color: textColor }}>
                 {b.label}
               </span>
 
