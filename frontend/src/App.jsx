@@ -676,7 +676,7 @@ function ChildPanel({ buttons, onPlay, playingId, voiceNotice, readinessReady, o
           );
         })}
         {filtered.length === 0 && (
-          <p className="col-span-full text-center text-[#999] py-10">Nenhum botão nessa categoria ainda.</p>
+          <p className="col-span-full text-center text-[#999] py-10">Nenhum botão netegoria ainda.</p>
         )}
       </div>
     </div>
@@ -1885,11 +1885,7 @@ function SettingsPanel({ settings, onSave, onRequestPinChange }) {
           Usar voz clonada em vez da voz padrão do aparelho
         </label>
         <p className="text-xs text-[#999] mb-4">
-          A chave da API e o ID da voz do ElevenLabs agora ficam configurados no servidor
-          (arquivo <code className="px-1 bg-[#F3F0EA] rounded">backend/.env</code>), não aqui no navegador —
-          isso evita que a chave fique exposta. Veja o <code className="px-1 bg-[#F3F0EA] rounded">CLAUDE.md</code>
-          para o passo a passo. Se o backend não estiver configurado ou não estiver rodando, o app usa
-          automaticamente a voz padrão do aparelho.
+          Utilize a voz da sua criança ou de um adulto da sua confiança para ser a voz das frases faladas ao apertar os botões.
         </p>
         <VoiceRecorder onCloned={() => update('voiceEnabled', true)} />
       </div>
@@ -1906,9 +1902,7 @@ function SettingsPanel({ settings, onSave, onRequestPinChange }) {
         </button>
         <p className="text-xs text-[#999] mt-2 flex items-start gap-1">
           <Mail size={14} className="mt-0.5 shrink-0" />
-          Por segurança, o PIN só pode ser trocado confirmando um código enviado por e-mail pelo backend
-          (configurado em <code className="px-1 bg-[#F3F0EA] rounded">backend/.env</code>) — não dá mais para
-          editar direto aqui.
+          Por segurança, o PIN só pode ser trocado confirmando um código enviado por e-mail.
         </p>
       </div>
 
