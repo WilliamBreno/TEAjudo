@@ -103,9 +103,13 @@ async function saveJSON(key, value) {
 
 ## Estrutura de dados (chaves do localStorage, no frontend)
 - `teajudo:buttons` — array de botões: `{id, label, phrase, category, color,
-  emoji, imageData, locked}` — `emoji` e `imageData` são mutuamente
-  exclusivos (o formulário força escolher um ou outro; a UI dá preferência
-  a `imageData` quando os dois existem por algum motivo)
+  emoji, iconVariant, imageData, locked}` — `emoji`/`iconVariant` e
+  `imageData` são mutuamente exclusivos (o formulário força escolher um ou
+  outro; a UI dá preferência a `imageData` quando os dois existem por algum
+  motivo). `iconVariant` é `'emoji'` (padrão, usa o campo `emoji`) ou
+  `'minimal'` (ignora `emoji` e mostra o ícone de linha fixo da categoria,
+  de `CATEGORY_ICONS` — escolhido no cadastro do botão, não é uma
+  preferência global do painel)
 - `teajudo:settings` — `{pin, dailyLimitMinutes, voiceEnabled, showTimer,
   securityConfigured, parentEmail}` — **não guarda mais chaves de API**
   (ElevenLabs e SendGrid/EmailJS foram para `backend/.env`)

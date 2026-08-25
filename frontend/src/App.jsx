@@ -231,10 +231,10 @@ const CATEGORY_META = {
   social: { label: 'Social', color: '#D66E96' },
 };
 
-// Ícone de linha (minimalista) por categoria — usado quando
-// settings.iconStyle === 'minimal', no lugar do emoji do botão. Só entra
-// em jogo pra botões sem foto (b.imageData); foto de um botão específico
-// sempre aparece, não tem "versão minimalista" de uma foto.
+// Ícone de linha (minimalista) por categoria — usado quando o botão foi
+// cadastrado com b.iconVariant === 'minimal' (escolha feita no cadastro do
+// botão, em ButtonsManager — não é uma preferência global do painel). Só
+// entra em jogo pra botões sem foto (b.imageData); foto sempre aparece.
 const CATEGORY_ICONS = {
   acoes: Hand,
   pessoas: User,
@@ -243,11 +243,6 @@ const CATEGORY_ICONS = {
   perguntas: HelpCircle,
   social: MessageCircle,
 };
-
-const ICON_STYLE_OPTIONS = [
-  { key: 'emoji', label: 'Emoji' },
-  { key: 'minimal', label: 'Minimalista' },
-];
 
 const DEFAULT_BUTTONS = [
   { id: 'b1', label: 'Quero', phrase: 'Eu quero', category: 'acoes', emoji: '🙋', locked: false },
@@ -283,7 +278,6 @@ const DEFAULT_SETTINGS = {
   // opcional, que só os pais/terapeuta ativam se avaliarem que cabe bem
   // para aquela criança específica.
   idleDecorations: false,
-  iconStyle: 'emoji', // 'emoji' | 'minimal' — só afeta botões sem foto própria
 };
 
 const BUTTON_STYLE_OPTIONS = [
@@ -762,7 +756,6 @@ export default function TEAjudoApp() {
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
           idleDecorations={settings.idleDecorations}
-          iconStyle={settings.iconStyle}
           onChangeStyle={(patch) => persistSettings({ ...settings, ...patch })}
         />
       )}
@@ -878,7 +871,7 @@ function BreakOverlay({ onContinue, pin }) {
 
 function ChildPanel({
   buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
-  buttonStyle, reduceMotion, onChangeStyle, idleDecorations, iconStyle,
+  buttonStyle, reduceMotion, onChangeStyle, idleDecorations,
 }) {
   const [filter, setFilter] = useState('todos');
   const visibleButtons = buttons.filter((b) => !b.locked);
@@ -941,22 +934,6 @@ function ChildPanel({
         </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <span className="text-xs text-[#999]">Ícones:</span>
-        {ICON_STYLE_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            onClick={() => onChangeStyle({ iconStyle: opt.key })}
-            className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-300"
-            style={iconStyle === opt.key
-              ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
-              : { backgroundColor: '#fff', borderColor: '#DDD', color: '#5A5A5A' }}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-wrap gap-2 mb-5">
         <button
           onClick={() => setFilter('todos')}
@@ -985,7 +962,7 @@ function ChildPanel({
         <p className="text-sm text-[#B15E3E] bg-[#FBEFE7] rounded-xl px-3 py-2 mb-4">{voiceNotice}</p>
       )}
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
         {filtered.map((b, i) => {
           const color = b.color || CATEGORY_META[b.category].color;
           const isPlaying = playingId === b.id;
@@ -1004,7 +981,7 @@ function ChildPanel({
           const CategoryIcon = CATEGORY_ICONS[b.category];
           const media = b.imageData
             ? <img src={b.imageData} alt={b.label} className="w-7 h-7 object-cover rounded-full" />
-            : iconStyle === 'minimal'
+            : b.iconVariant === 'minimal'
               ? <CategoryIcon size={21} strokeWidth={2.25} />
               : <span className="text-2xl">{b.emoji}</span>;
           // No tátil o fundo do próprio cartão já É a cor da categoria — a
@@ -1019,7 +996,7 @@ function ChildPanel({
               key={b.id}
               data-style={buttonStyle}
               onClick={() => onPlay(b)}
-              className={`${hasEntered ? '' : 'tea-popin '}relative aspect-square rounded-3xl flex flex-col items-center justify-center gap-1 active:scale-90 transition-transform duration-150 ${showEffects ? 'tea-btn-bounce' : ''}`}
+              className={`${hasEntered ? '' : 'tea-popin '}relative rounded-3xl flex flex-col items-center justify-center gap-2 py-5 px-2 min-h-28 active:scale-90 transition-transform duration-150 ${showEffects ? 'tea-btn-bounce' : ''}`}
               style={{
                 ...getButtonCardStyle(buttonStyle, color),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
@@ -1953,8 +1930,8 @@ function ButtonsManager({ buttons, onSave }) {
   function chooseIconMode(newMode) {
     setIconMode(newMode);
     // ao trocar de modo, limpa o que não vai ser usado — reforça que é
-    // "ou um, ou outro", não os dois ao mesmo tempo
-    if (newMode === 'emoji') setImageData(null);
+    // "ou um, ou outro", nunca dois ao mesmo tempo
+    if (newMode !== 'foto') setImageData(null);
   }
 
   function addButton() {
@@ -1967,6 +1944,9 @@ function ButtonsManager({ buttons, onSave }) {
       category,
       color,
       emoji: iconMode === 'emoji' ? emoji : null,
+      // 'minimal' usa o ícone de linha fixo da categoria (CATEGORY_ICONS),
+      // escolhido aqui no cadastro — não é uma preferência global do painel.
+      iconVariant: iconMode === 'minimal' ? 'minimal' : 'emoji',
       imageData: iconMode === 'foto' ? imageData : null,
       locked: startLocked,
     };
@@ -1981,6 +1961,10 @@ function ButtonsManager({ buttons, onSave }) {
   function toggleLock(id) {
     onSave(buttons.map((b) => (b.id === id ? { ...b, locked: !b.locked } : b)));
   }
+
+  // JSX não aceita `<Obj[key] />` como nome de tag — precisa estar numa
+  // variável com nome capitalizado primeiro.
+  const MinimalIcon = CATEGORY_ICONS[category];
 
   return (
     <div>
@@ -2023,13 +2007,19 @@ function ButtonsManager({ buttons, onSave }) {
             onClick={() => chooseIconMode('emoji')}
             className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
           >
-            🙂 Usar ícone
+            🙂 Emoji
+          </button>
+          <button
+            onClick={() => chooseIconMode('minimal')}
+            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'minimal' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          >
+            <MinimalIcon size={16} /> Minimalista
           </button>
           <button
             onClick={() => chooseIconMode('foto')}
             className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'foto' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
           >
-            <ImagePlus size={16} /> Usar foto
+            <ImagePlus size={16} /> Foto
           </button>
         </div>
 
@@ -2044,6 +2034,13 @@ function ButtonsManager({ buttons, onSave }) {
                 {em}
               </button>
             ))}
+          </div>
+        )}
+
+        {iconMode === 'minimal' && (
+          <div className="tea-fadein flex items-center gap-2 text-sm text-[#5A5A5A] bg-[#F3F0EA] px-3 py-2 rounded-xl mb-3">
+            <MinimalIcon size={18} />
+            Ícone de linha da categoria "{CATEGORY_META[category].label}" — muda sozinho se você trocar a categoria acima.
           </div>
         )}
 
@@ -2063,7 +2060,9 @@ function ButtonsManager({ buttons, onSave }) {
         >
           {iconMode === 'foto' && imageData
             ? <img src={imageData} className="w-12 h-12 object-cover rounded-xl border-2 border-white/80" alt="" />
-            : <span className="text-3xl">{emoji}</span>}
+            : iconMode === 'minimal'
+              ? <MinimalIcon size={28} color={getContrastText(color)} strokeWidth={2.25} />
+              : <span className="text-3xl">{emoji}</span>}
           <span className="text-xs font-bold text-center" style={{ color: getContrastText(color) }}>{label || 'Pré-visualização'}</span>
         </div>
 
@@ -2088,11 +2087,16 @@ function ButtonsManager({ buttons, onSave }) {
         const locked = buttons.filter((b) => b.locked);
         const renderItem = (b) => {
           const btnColor = b.color || CATEGORY_META[b.category].color;
+          const ItemMinimalIcon = CATEGORY_ICONS[b.category];
           return (
             <div key={b.id} className={`flex items-center justify-between bg-white border rounded-xl px-3 py-2 ${b.locked ? 'border-dashed border-[#DDD] opacity-80' : 'border-[#EADFCB]'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: btnColor }} />
-                {b.imageData ? <img src={b.imageData} className="w-8 h-8 rounded-lg object-cover" alt="" /> : <span className="text-xl">{b.emoji}</span>}
+                {b.imageData
+                  ? <img src={b.imageData} className="w-8 h-8 rounded-lg object-cover" alt="" />
+                  : b.iconVariant === 'minimal'
+                    ? <ItemMinimalIcon size={18} style={{ color: btnColor }} />
+                    : <span className="text-xl">{b.emoji}</span>}
                 <div>
                   <div className="font-semibold text-sm">{b.label}</div>
                   <div className="text-xs text-[#999]">{CATEGORY_META[b.category].label}</div>
