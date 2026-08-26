@@ -87,13 +87,11 @@ const GLOBAL_STYLES = `
     50% { height: 13px; }
   }
 
-  /* Decoração ambiente opcional (settings.idleDecorations, desligada por
-     padrão — ver comentário em DEFAULT_SETTINGS) — halo, flutuar do ícone
-     e estrelinhas piscando, contínuos enquanto o botão está em repouso.
-     Cada elemento tem uma classe "base" (aparência estática, sempre
-     presente quando idleDecorations está ligado) e uma classe extra que só
-     adiciona a animação — assim, com reduceMotion ligado, os elementos
-     continuam visíveis, só param de se mover, em vez de sumir. */
+  /* Decoração de repouso, sempre presente nos botões — halo, ícone
+     flutuando e fagulhas piscando, enquanto o botão está parado. Cada
+     elemento tem uma classe "base" (aparência estática) e uma classe
+     extra que só adiciona a animação — assim, com reduceMotion (manual
+     ou do SO), os elementos continuam visíveis, só param de se mover. */
   @keyframes teaOrbBreathe {
     0%, 100% { opacity: 0.28; }
     50% { opacity: 0.5; }
@@ -132,7 +130,7 @@ const GLOBAL_STYLES = `
   .tea-ring-burst-3 { animation-delay: 220ms; border-width: 2px; }
   .tea-shine-sweep {
     position: absolute; top: 0; left: 0; width: 35%; height: 100%;
-    background: linear-gradient(120deg, transparent, rgba(255,255,255,.85), transparent);
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,.9), transparent);
     animation: teaShineSweep 0.6s ease-out forwards;
     pointer-events: none;
     z-index: 2;
@@ -145,7 +143,7 @@ const GLOBAL_STYLES = `
   }
   .tea-star-pop {
     position: absolute; top: 0; font-size: 1.1rem; line-height: 1;
-    animation: teaStarPop 0.9s ease-out forwards;
+    animation: teaStarPop 0.75s ease-out forwards;
     pointer-events: none;
     z-index: 2;
   }
@@ -190,9 +188,9 @@ const GLOBAL_STYLES = `
     box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--tea-color) !important;
   }
 
-  /* Halo/ícone/fagulhas: classe "base" = aparência estática (sempre que
-     idleDecorations está ligado); classe "-anim" = só ela adiciona o
-     movimento (só entra quando reduceMotion também está desligado). */
+  /* Halo/ícone/fagulhas: classe "base" = aparência estática (sempre
+     presente); classe "-anim" = só ela adiciona o movimento (só entra
+     quando reduceMotion está desligado). */
   .tea-orb-halo {
     position: absolute; inset: -16px; border-radius: inherit;
     filter: blur(20px); opacity: 0.4; pointer-events: none;
@@ -272,12 +270,6 @@ const DEFAULT_SETTINGS = {
   parentEmail: '',
   buttonStyle: 'nitido', // 'tatil' | 'nitido' — só o "material" visual do botão
   reduceMotion: false,
-  // Desligado por padrão de propósito: o painel da criança normalmente não
-  // tem nenhuma animação contínua/ambiente (só reage a toques reais), por
-  // ser potencialmente sobre-estimulante sensorialmente. Isso é uma exceção
-  // opcional, que só os pais/terapeuta ativam se avaliarem que cabe bem
-  // para aquela criança específica.
-  idleDecorations: false,
 };
 
 const BUTTON_STYLE_OPTIONS = [
@@ -381,23 +373,25 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-// Gera as posições (fixas, não aleatórias) dos confetes do efeito de toque,
-// em leque a partir do centro do botão — determinístico para não "pular"
-// se o componente re-renderizar enquanto a animação ainda está rodando.
-// 14 ângulos cobrindo o leque de -85° a 85° (acima do botão).
-const CONFETTI_ANGLES = Array.from({ length: 14 }, (_, i) => -85 + i * (170 / 13));
+// Gera as posições (fixas, não aleatórias) dos confetes do efeito de toque
+// — 14 partículas em círculo completo (360°/14, com um leve jitter
+// alternado, igual ao arquivo de referência) a partir do centro do botão.
+// Determinístico pra não "pular" se o componente re-renderizar enquanto a
+// animação ainda está rodando.
+const CONFETTI_COUNT = 14;
 function getConfettiPieces(color) {
   const palette = [color, lightenColor(color, 0.35), shadeColor(color, 0.2), '#FFD93D', '#FFFFFF'];
-  return CONFETTI_ANGLES.map((deg, i) => {
-    const rad = (deg * Math.PI) / 180;
-    const dist = 42 + (i % 3) * 12;
+  return Array.from({ length: CONFETTI_COUNT }, (_, i) => {
+    const angle = i * (360 / CONFETTI_COUNT) + (i % 2 === 0 ? 5 : -7);
+    const rad = (angle * Math.PI) / 180;
+    const dist = 40 + (i % 4) * 11;
     return {
-      tx: Math.sin(rad) * dist,
-      ty: -Math.cos(rad) * dist,
-      rot: deg * 4,
+      tx: Math.cos(rad) * dist,
+      ty: Math.sin(rad) * dist,
+      rot: angle * 4,
       color: palette[i % palette.length],
-      size: 5 + (i % 3) * 2,
-      delay: (i % 4) * 25,
+      size: 4 + (i % 4) * 2,
+      delay: (i % 5) * 22,
     };
   });
 }
@@ -755,7 +749,6 @@ export default function TEAjudoApp() {
           onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
-          idleDecorations={settings.idleDecorations}
           onChangeStyle={(patch) => persistSettings({ ...settings, ...patch })}
         />
       )}
@@ -871,7 +864,7 @@ function BreakOverlay({ onContinue, pin }) {
 
 function ChildPanel({
   buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
-  buttonStyle, reduceMotion, onChangeStyle, idleDecorations,
+  buttonStyle, reduceMotion, onChangeStyle,
 }) {
   const [filter, setFilter] = useState('todos');
   const visibleButtons = buttons.filter((b) => !b.locked);
@@ -967,11 +960,10 @@ function ChildPanel({
           const color = b.color || CATEGORY_META[b.category].color;
           const isPlaying = playingId === b.id;
           const showEffects = isPlaying && !effectiveReduceMotion;
-          // renderIdle: os elementos existem no DOM sempre que o toggle está
-          // ligado. animateIdle: só eles se movem — com reduceMotion (manual
-          // ou do SO) eles continuam visíveis, só param (ver GLOBAL_STYLES).
-          const renderIdle = !!idleDecorations;
-          const animateIdle = renderIdle && !effectiveReduceMotion;
+          // Decoração em repouso (halo, ícone flutuando, fagulhas) fica
+          // sempre presente — só a animação para com reduceMotion (manual
+          // ou do SO), sem sumir (ver GLOBAL_STYLES).
+          const animateIdle = !effectiveReduceMotion;
           const textColor = buttonStyle === 'nitido' ? '#292524' : getContrastText(color);
           // Flutuar/wiggle do ícone vivem só no badge circular (abaixo), nos
           // dois estilos — nunca no <img>/emoji cru. Durante o toque
@@ -1005,12 +997,10 @@ function ChildPanel({
                 if (e.animationName === 'teaPopIn' && e.target === e.currentTarget) markEntered(b.id);
               }}
             >
-              {renderIdle && (
-                <span
-                  className={`tea-orb-halo${animateIdle ? ' tea-orb-halo-anim' : ''}`}
-                  style={{ backgroundImage: `radial-gradient(circle, ${color}, transparent 70%)` }}
-                />
-              )}
+              <span
+                className={`tea-orb-halo${animateIdle ? ' tea-orb-halo-anim' : ''}`}
+                style={{ backgroundImage: `radial-gradient(circle, ${color}, transparent 70%)` }}
+              />
 
               {buttonStyle === 'nitido' && (
                 <span className="absolute top-0 left-3.5 right-3.5 h-[3px] rounded-[2px] z-[1]" style={{ backgroundColor: color }} />
@@ -1051,12 +1041,8 @@ function ChildPanel({
                 {b.label}
               </span>
 
-              {renderIdle && (
-                <>
-                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ top: 8, right: 10, color: sparkColor, animationDelay: `${(i % 5) * 300}ms` }}>✦</span>
-                  <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ bottom: 8, left: 10, color: sparkColor, animationDelay: `${(i % 5) * 300 + 900}ms` }}>✦</span>
-                </>
-              )}
+              <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ top: 8, right: 10, color: sparkColor, animationDelay: `${(i % 5) * 300}ms` }}>✦</span>
+              <span className={`tea-spark${animateIdle ? ' tea-spark-anim' : ''}`} style={{ bottom: 8, left: 10, color: sparkColor, animationDelay: `${(i % 5) * 300 + 900}ms` }}>✦</span>
 
               {showEffects && (
                 <>
@@ -2357,18 +2343,6 @@ function SettingsPanel({ settings, onSave, onRequestPinChange }) {
           <input type="checkbox" checked={local.showTimer} onChange={(e) => update('showTimer', e.target.checked)} />
           Mostrar cronômetro durante o quebra-cabeça
         </label>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
-        <label className="flex items-center gap-2 mb-1">
-          <input type="checkbox" checked={!!local.idleDecorations} onChange={(e) => update('idleDecorations', e.target.checked)} />
-          Animações decorativas nos botões (ícone balançando, brilhos piscando)
-        </label>
-        <p className="text-xs text-[#999]">
-          Desligado por padrão: o painel normalmente só anima quando a criança toca em algo,
-          para não sobre-estimular. Ligue só se avaliar que um movimento suave e contínuo
-          nos botões funciona bem para o seu filho.
-        </p>
       </div>
 
       <button onClick={save} className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2.5 font-semibold transition-transform active:scale-95">

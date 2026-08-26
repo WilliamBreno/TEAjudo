@@ -189,9 +189,17 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre
   tem uma única imagem clara, não uma mistura confusa.
-- **Sem animação contínua/ambiente no painel da criança** — só anima em
-  resposta a uma ação real (tocar botão, completar quebra-cabeça). Movimento
-  constante pode sobre-estimular sensorialmente.
+- **Sem animação contínua/ambiente no painel da criança, com uma exceção
+  deliberada** — de resto, só anima em resposta a uma ação real (tocar
+  botão, completar quebra-cabeça); movimento constante pode
+  sobre-estimular sensorialmente. A exceção são os próprios botões AAC em
+  `ChildPanel`: um halo pulsando (opacidade, sem girar), o ícone
+  flutuando bem sutil e duas fagulhas piscando em cada botão, sempre
+  ativos — decisão explícita do usuário, pra bater com um design de
+  referência específico, revertendo uma versão anterior que deixava isso
+  atrás de um toggle opcional em Configurações. Continua respeitando
+  `reduceMotion` (manual e `prefers-reduced-motion` do SO): com ele
+  ligado, os elementos ficam visíveis mas param de se mover.
 - **Limite de tempo é sugestão gentil, nunca bloqueio duro** — o app também
   pode ser usado para autorregulação; corte abrupto pode prejudicar mais do
   que ajudar.
