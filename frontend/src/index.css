@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+/* Bloqueia pinch-zoom e duplo-toque-pra-zoom no celular — reforça a tag
+   viewport (user-scalable=no) do index.html, que alguns navegadores (ex:
+   iOS com "Zoom" ligado em Acessibilidade) ignoram. Isso NÃO afeta o zoom
+   do próprio navegador no desktop (Ctrl+scroll/Ctrl+"+"), que nenhum site
+   consegue bloquear — é intencional, fica sob controle do usuário lá. */
+html {
+  touch-action: pan-x pan-y;
+}
