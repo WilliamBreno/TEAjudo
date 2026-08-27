@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Lock, Unlock, Plus, Trash2, X, Clock, Mic, ImagePlus, ChevronLeft, RotateCcw,
   Puzzle as PuzzleIcon, Sparkles, Mail,
-  Hand, User, Smile, CircleDot, MessageCircle, HelpCircle,
+  Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
+  ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
+  Heart, Star, Sun, Moon, Volume2, Bed, Tv,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -229,18 +231,58 @@ const CATEGORY_META = {
   social: { label: 'Social', color: '#D66E96' },
 };
 
-// Ícone de linha (minimalista) por categoria — usado quando o botão foi
-// cadastrado com b.iconVariant === 'minimal' (escolha feita no cadastro do
-// botão, em ButtonsManager — não é uma preferência global do painel). Só
-// entra em jogo pra botões sem foto (b.imageData); foto sempre aparece.
-const CATEGORY_ICONS = {
-  acoes: Hand,
-  pessoas: User,
-  objetos: CircleDot,
-  sentimentos: Smile,
-  perguntas: HelpCircle,
-  social: MessageCircle,
+// Biblioteca de ícones de linha (minimalistas) disponíveis pra escolher no
+// cadastro do botão (ButtonsManager) — o pai escolhe qual usar por botão,
+// não é mais só um ícone fixo automático por categoria (esse continua
+// existindo, só como sugestão inicial em CATEGORY_DEFAULT_ICON).
+const MINIMAL_ICON_LIBRARY = [
+  { key: 'Hand', label: 'Mão', Icon: Hand },
+  { key: 'User', label: 'Pessoa', Icon: User },
+  { key: 'Users', label: 'Pessoas', Icon: Users },
+  { key: 'Smile', label: 'Sorriso', Icon: Smile },
+  { key: 'Frown', label: 'Triste', Icon: Frown },
+  { key: 'Laugh', label: 'Risada', Icon: Laugh },
+  { key: 'ThumbsUp', label: 'Gostei', Icon: ThumbsUp },
+  { key: 'ThumbsDown', label: 'Não gostei', Icon: ThumbsDown },
+  { key: 'Check', label: 'Certo', Icon: Check },
+  { key: 'X', label: 'Errado', Icon: X },
+  { key: 'HelpCircle', label: 'Pergunta', Icon: HelpCircle },
+  { key: 'MessageCircle', label: 'Conversa', Icon: MessageCircle },
+  { key: 'CircleDot', label: 'Bola', Icon: CircleDot },
+  { key: 'Utensils', label: 'Comer', Icon: Utensils },
+  { key: 'GlassWater', label: 'Beber', Icon: GlassWater },
+  { key: 'Bath', label: 'Banheiro', Icon: Bath },
+  { key: 'Home', label: 'Casa', Icon: Home },
+  { key: 'Car', label: 'Carro', Icon: Car },
+  { key: 'Music', label: 'Música', Icon: Music },
+  { key: 'Heart', label: 'Coração', Icon: Heart },
+  { key: 'Star', label: 'Estrela', Icon: Star },
+  { key: 'Sun', label: 'Sol', Icon: Sun },
+  { key: 'Moon', label: 'Lua', Icon: Moon },
+  { key: 'Volume2', label: 'Som', Icon: Volume2 },
+  { key: 'Bed', label: 'Cama', Icon: Bed },
+  { key: 'Tv', label: 'TV', Icon: Tv },
+];
+const MINIMAL_ICON_MAP = Object.fromEntries(MINIMAL_ICON_LIBRARY.map((o) => [o.key, o.Icon]));
+
+// Sugestão inicial de ícone minimalista por categoria — só o ponto de
+// partida no cadastro (e o que os botões antigos, salvos antes dessa
+// escolha existir, continuam usando via b.minimalIcon ausente).
+const CATEGORY_DEFAULT_ICON = {
+  acoes: 'Hand',
+  pessoas: 'User',
+  objetos: 'CircleDot',
+  sentimentos: 'Smile',
+  perguntas: 'HelpCircle',
+  social: 'MessageCircle',
 };
+
+// Ícone de linha efetivo de um botão em modo minimalista: o que foi
+// escolhido no cadastro (b.minimalIcon) ou, na falta dele, a sugestão da
+// categoria. Só entra em jogo pra botões sem foto (b.imageData).
+function getMinimalIcon(button) {
+  return MINIMAL_ICON_MAP[button.minimalIcon] || MINIMAL_ICON_MAP[CATEGORY_DEFAULT_ICON[button.category]];
+}
 
 const DEFAULT_BUTTONS = [
   { id: 'b1', label: 'Quero', phrase: 'Eu quero', category: 'acoes', emoji: '🙋', locked: false },
@@ -970,7 +1012,7 @@ function ChildPanel({
           // (showEffects) o wiggle tem prioridade sobre o flutuar contínuo;
           // as duas não tocam ao mesmo tempo no mesmo nó.
           const badgeMotionClass = showEffects ? ' tea-icon-wiggle' : (animateIdle ? ' tea-icon-float' : '');
-          const CategoryIcon = CATEGORY_ICONS[b.category];
+          const CategoryIcon = getMinimalIcon(b);
           const media = b.imageData
             ? <img src={b.imageData} alt={b.label} className="w-7 h-7 object-cover rounded-full" />
             : b.iconVariant === 'minimal'
@@ -1899,8 +1941,11 @@ function ButtonsManager({ buttons, onSave }) {
   const [phrase, setPhrase] = useState('');
   const [category, setCategory] = useState('acoes');
   const [color, setColor] = useState(CATEGORY_META['acoes'].color);
-  const [iconMode, setIconMode] = useState('emoji'); // 'emoji' | 'foto'
+  const [iconMode, setIconMode] = useState('emoji'); // 'emoji' | 'minimal' | 'foto'
   const [emoji, setEmoji] = useState('⭐');
+  // null = segue a sugestão da categoria automaticamente (CATEGORY_DEFAULT_ICON);
+  // uma string = o pai escolheu um ícone específico na grade, abaixo.
+  const [minimalIcon, setMinimalIcon] = useState(null);
   const [imageData, setImageData] = useState(null);
   const [startLocked, setStartLocked] = useState(false);
   const EMOJI_CHOICES = ['⭐', '🙋', '➕', '🆘', '✋', '🙂', '🫵', '🍽️', '💧', '🚻', '😊', '😢', '😴', '✅', '❌', '👋', '🎵', '📺', '🛏️', '🚗'];
@@ -1920,6 +1965,8 @@ function ButtonsManager({ buttons, onSave }) {
     if (newMode !== 'foto') setImageData(null);
   }
 
+  const effectiveMinimalIcon = minimalIcon || CATEGORY_DEFAULT_ICON[category];
+
   function addButton() {
     if (!label.trim()) return;
     if (iconMode === 'foto' && !imageData) return;
@@ -1930,14 +1977,15 @@ function ButtonsManager({ buttons, onSave }) {
       category,
       color,
       emoji: iconMode === 'emoji' ? emoji : null,
-      // 'minimal' usa o ícone de linha fixo da categoria (CATEGORY_ICONS),
-      // escolhido aqui no cadastro — não é uma preferência global do painel.
+      // 'minimal' usa o ícone de linha escolhido na grade abaixo (ou a
+      // sugestão da categoria, se o pai não escolher nenhum específico).
       iconVariant: iconMode === 'minimal' ? 'minimal' : 'emoji',
+      minimalIcon: iconMode === 'minimal' ? effectiveMinimalIcon : null,
       imageData: iconMode === 'foto' ? imageData : null,
       locked: startLocked,
     };
     onSave([...buttons, newButton]);
-    setLabel(''); setPhrase(''); setImageData(null);
+    setLabel(''); setPhrase(''); setImageData(null); setMinimalIcon(null);
   }
 
   function removeButton(id) {
@@ -1950,7 +1998,7 @@ function ButtonsManager({ buttons, onSave }) {
 
   // JSX não aceita `<Obj[key] />` como nome de tag — precisa estar numa
   // variável com nome capitalizado primeiro.
-  const MinimalIcon = CATEGORY_ICONS[category];
+  const MinimalIcon = MINIMAL_ICON_MAP[effectiveMinimalIcon];
 
   return (
     <div>
@@ -2010,23 +2058,54 @@ function ButtonsManager({ buttons, onSave }) {
         </div>
 
         {iconMode === 'emoji' && (
-          <div className="tea-fadein flex flex-wrap gap-2 mb-3">
-            {EMOJI_CHOICES.map((em) => (
-              <button
-                key={em}
-                onClick={() => setEmoji(em)}
-                className={`text-2xl w-10 h-10 rounded-xl border transition-all duration-150 ${emoji === em ? 'border-[#2F6F62] bg-[#EAF3F0]' : 'border-[#EEE]'}`}
-              >
-                {em}
-              </button>
-            ))}
+          <div className="tea-fadein mb-3">
+            <label className="flex items-center gap-2 mb-2">
+              <input
+                value={emoji}
+                onChange={(e) => setEmoji(e.target.value)}
+                placeholder="Digite ou cole um emoji"
+                maxLength={8}
+                className="text-2xl w-16 h-12 text-center border border-[#DDD] rounded-xl"
+              />
+              <span className="text-xs text-[#999]">
+                Abra o teclado de emojis do seu aparelho aqui pra usar qualquer emoji
+                (celular: botão de emoji no teclado; Windows: <kbd className="px-1 border rounded">Win</kbd> + <kbd className="px-1 border rounded">.</kbd>;
+                Mac: <kbd className="px-1 border rounded">Cmd</kbd> + <kbd className="px-1 border rounded">Ctrl</kbd> + <kbd className="px-1 border rounded">Espaço</kbd>) —
+                ou escolha um dos comuns abaixo.
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {EMOJI_CHOICES.map((em) => (
+                <button
+                  key={em}
+                  onClick={() => setEmoji(em)}
+                  className={`text-2xl w-10 h-10 rounded-xl border transition-all duration-150 ${emoji === em ? 'border-[#2F6F62] bg-[#EAF3F0]' : 'border-[#EEE]'}`}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {iconMode === 'minimal' && (
-          <div className="tea-fadein flex items-center gap-2 text-sm text-[#5A5A5A] bg-[#F3F0EA] px-3 py-2 rounded-xl mb-3">
-            <MinimalIcon size={18} />
-            Ícone de linha da categoria "{CATEGORY_META[category].label}" — muda sozinho se você trocar a categoria acima.
+          <div className="tea-fadein mb-3">
+            <p className="text-xs text-[#999] mb-2">
+              Escolha o ícone (sugestão da categoria "{CATEGORY_META[category].label}" já vem marcada):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MINIMAL_ICON_LIBRARY.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  onClick={() => setMinimalIcon(key)}
+                  aria-label={label}
+                  title={label}
+                  className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-150 ${effectiveMinimalIcon === key ? 'border-[#2F6F62] bg-[#EAF3F0] text-[#2F6F62]' : 'border-[#EEE] text-[#5A5A5A]'}`}
+                >
+                  <Icon size={18} />
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -2073,7 +2152,7 @@ function ButtonsManager({ buttons, onSave }) {
         const locked = buttons.filter((b) => b.locked);
         const renderItem = (b) => {
           const btnColor = b.color || CATEGORY_META[b.category].color;
-          const ItemMinimalIcon = CATEGORY_ICONS[b.category];
+          const ItemMinimalIcon = getMinimalIcon(b);
           return (
             <div key={b.id} className={`flex items-center justify-between bg-white border rounded-xl px-3 py-2 ${b.locked ? 'border-dashed border-[#DDD] opacity-80' : 'border-[#EADFCB]'}`}>
               <div className="flex items-center gap-2">
