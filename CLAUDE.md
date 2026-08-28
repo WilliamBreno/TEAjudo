@@ -80,6 +80,37 @@ cd frontend && npm install && cp .env.example .env && npm run dev
 Build de produção do frontend: `cd frontend && npm run build` (gera `dist/`).
 Rodar o backend em produção: `cd backend && npm start`.
 
+## Deploy em produção
+Backend no Render (`https://teajudo.onrender.com`), frontend no Vercel
+(`https://te-ajudo-chi.vercel.app`) — domínios diferentes.
+
+**Frontend e backend "parecem" o mesmo site pro navegador, via proxy do
+Vercel** — `frontend/vercel.json` repassa `/api/*` pro Render por baixo
+dos panos:
+```json
+{ "rewrites": [{ "source": "/api/:path*", "destination": "https://teajudo.onrender.com/api/:path*" }] }
+```
+Isso não é só conveniência: sem isso, o cookie de sessão (Fase 1) vira um
+cookie "de terceiro" aos olhos do navegador (frontend e backend em
+domínios diferentes), e navegadores modernos (Chrome incluso, não só
+Safari) vêm bloqueando isso cada vez mais — mesmo com `SameSite=None;
+Secure` configurado certinho no backend, a sessão se perdia a cada
+recarregamento da página. Com o proxy, toda chamada de API sai do próprio
+`te-ajudo-chi.vercel.app` do ponto de vista do navegador, então o cookie
+vira "primeira parte" e para de ser bloqueado. No Vercel, a variável
+`VITE_API_URL` fica como **string vazia** (não apontando direto pro
+Render) — por isso `API_URL` usa `??` em vez de `||` no `App.jsx`: com
+`||`, uma string vazia (falsy) cairia no fallback de `localhost:3001` por
+engano.
+
+Variáveis obrigatórias no Render (backend), além das já documentadas em
+`.env.example`: `COOKIE_SECRET` (sem ela, o servidor recusa subir com
+`NODE_ENV=production`) e `BACKEND_PUBLIC_URL=https://teajudo.onrender.com`
+(pro webhook da InfinitePay funcionar). `CORS_ORIGIN` continua configurada
+pro domínio do Vercel, mas com o proxy ativo isso deixa de ser crítico
+(as chamadas passam a ser same-origin) — fica só como fallback pra quem
+acessar a API do Render direto.
+
 ## Persistência (localStorage) — no frontend
 Todo o app passa pelas funções `loadJSON(key, fallback)` e
 `saveJSON(key, value)` (em `frontend/src/App.jsx`), implementadas com
@@ -442,9 +473,10 @@ azul aparece flutuando no canto, funcional mas não é o efeito
 "personagem solto" pretendido. Trocar por `TutiBubble` para um arquivo de
 corpo inteiro com fundo transparente quando existir.
 
-`WelcomeScreen` (tela cheia, `frontend/src/App.jsx`) — aparece 1x por
-sessão de navegador (flag em `sessionStorage`, não `localStorage`: deve
-voltar depois de fechar e abrir a aba de novo), gatilho é sessão logada
+`WelcomeScreen` (tela cheia, `frontend/src/App.jsx`) — aparece toda vez
+que a sessão é confirmada (login novo OU recarregar a página já logado —
+decisão explícita do usuário; antes era 1x por sessão via
+`sessionStorage`, removido a pedido dele), gatilho é sessão logada
 + `settings.childName` preenchido (sem os dois, pula — evita uma frase
 quebrada tipo "assistente virtual de undefined!" pra quem logou num
 navegador novo, já que `childName` é local e não sincroniza entre
@@ -630,10 +662,9 @@ acontece no backend, o frontend só repassa o que a pessoa digitou.
 - [ ] Múltiplos perfis (mais de uma criança por conta)
 - [ ] Exportar relatório da Análise em PDF para levar ao terapeuta
 - [ ] Testes automatizados (ainda não há nenhum, nem frontend nem backend)
-- [ ] Deploy: o backend precisa de um host que mantenha processo rodando
-      (Render, Railway, Fly.io, VPS — não funciona em hosting puramente
-      estático); o frontend pode ir para Vercel/Netlify apontando
-      `VITE_API_URL` para a URL pública do backend
+- [x] Deploy: backend no Render (`https://teajudo.onrender.com`), frontend
+      no Vercel (`https://te-ajudo-chi.vercel.app`) — ver seção "Deploy em
+      produção" abaixo
 - [ ] `SENDGRID_FROM` está verificado por Single Sender (Gmail), não por
       Domain Authentication — sem domínio próprio autenticado via DNS
       (SPF/DKIM), o Gmail não confia no remetente e os e-mails tendem a

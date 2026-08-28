@@ -14,7 +14,15 @@ import {
 /* ---------- Backend do TEAjudo ---------- */
 // Endereço do servidor (ver pasta ../backend). Configurável via .env
 // (VITE_API_URL) — cai em localhost:3001 se não for definido.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+//
+// Em produção, VITE_API_URL é uma STRING VAZIA de propósito: o Vercel
+// repassa /api/* pro backend do Render por baixo dos panos (ver
+// vercel.json), então o navegador nunca sabe que existe um domínio
+// separado — é tudo "mesmo site" do ponto de vista dele, e o cookie de
+// sessão (SameSite=None) para de ser tratado como cookie de terceiro e
+// bloqueado. Por isso `??` em vez de `||`: com `||`, uma string vazia
+// (falsy) cairia no fallback de localhost por engano.
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 
 /* ---------- Design tokens & dados base ---------- */
 
@@ -700,23 +708,23 @@ export default function TEAjudoApp() {
   const [securityMode, setSecurityMode] = useState('first'); // 'first' | 'recover'
   const [securityCancelTarget, setSecurityCancelTarget] = useState('parent');
 
-  // Tela de boas-vindas do Tuti — 1x por sessão de navegador
-  // (sessionStorage, não localStorage: deve voltar a aparecer se a aba
-  // fechar e abrir de novo). Depende de sessão logada (já existe, Fase 1)
-  // e de ter um childName salvo — sem isso não tem o que falar ("...
-  // assistente virtual de undefined!"), então melhor pular a tela do que
-  // mostrar uma frase quebrada (pode acontecer se a conta foi criada
-  // antes desta função existir, ou login num navegador novo — childName é
-  // local, não sincroniza entre dispositivos).
+  // Tela de boas-vindas do Tuti — aparece toda vez que a sessão é
+  // confirmada (login novo OU recarregar a página com sessão já
+  // válida — decisão explícita do usuário, revertendo o "1x por sessão
+  // de navegador" original). Como `responsavel` só passa de null pra
+  // preenchido uma vez por carregamento da página, esse efeito já dispara
+  // exatamente 1x por load/reload, sem precisar de sessionStorage.
+  // Depende de ter um childName salvo — sem isso não tem o que falar
+  // ("... assistente virtual de undefined!"), então melhor pular a tela
+  // do que mostrar uma frase quebrada (pode acontecer se a conta foi
+  // criada antes desta função existir, ou login num navegador novo —
+  // childName é local, não sincroniza entre dispositivos).
   const [showWelcome, setShowWelcome] = useState(false);
   useEffect(() => {
     if (!responsavel || loading || !settings.childName) return;
-    let already = false;
-    try { already = sessionStorage.getItem('teajudo:welcome-shown') === '1'; } catch (e) {}
-    if (!already) setShowWelcome(true);
+    setShowWelcome(true);
   }, [responsavel, loading, settings.childName]);
   const handleWelcomeFinish = useCallback(() => {
-    try { sessionStorage.setItem('teajudo:welcome-shown', '1'); } catch (e) {}
     setShowWelcome(false);
   }, []);
 
@@ -1312,7 +1320,17 @@ function WelcomeScreen({ childName, onFinish }) {
         onEnded={() => setVideoEnded(true)}
         className="w-full max-w-xs rounded-3xl shadow-sm"
       />
-      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 sm:h-20 w-auto" />
+      {/* Nome por extenso em HTML (não a imagem estática de Logo.png) —
+          decisão explícita do usuário: T-E-A (sigla de Transtorno do
+          Espectro Autista) cada letra numa cor de CATEGORY_META, "judo"
+          na MESMA cor do A (não a cor da marca — pedido específico daqui,
+          diferente do resto do app onde Logo.png é usada como está). */}
+      <div className="text-3xl sm:text-4xl font-bold" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
+        <span style={{ color: CATEGORY_META.sentimentos.color }}>T</span>
+        <span style={{ color: CATEGORY_META.pessoas.color }}>E</span>
+        <span style={{ color: CATEGORY_META.acoes.color }}>A</span>
+        <span style={{ color: CATEGORY_META.acoes.color }}>judo</span>
+      </div>
     </div>
   );
 }
