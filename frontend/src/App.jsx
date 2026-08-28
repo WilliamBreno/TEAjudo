@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Lock, Unlock, Plus, Trash2, X, Clock, Mic, ImagePlus, ChevronLeft, RotateCcw,
-  Puzzle as PuzzleIcon, Sparkles, Mail,
+  Puzzle as PuzzleIcon, Sparkles, Mail, CreditCard, RefreshCw,
   Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
   ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
   Heart, Star, Sun, Moon, Volume2, Bed, Tv,
@@ -312,6 +312,7 @@ const DEFAULT_SETTINGS = {
   parentEmail: '',
   buttonStyle: 'nitido', // 'tatil' | 'nitido' — só o "material" visual do botão
   reduceMotion: false,
+  childName: '', // nome da criança, usado nas frases do Tuti (WelcomeScreen)
 };
 
 const BUTTON_STYLE_OPTIONS = [
@@ -326,13 +327,23 @@ const STAR_POP_POSITIONS = [
   { left: '68%', rotate: 20, delay: 170 },
 ];
 
+// Fotos embutidas dos jogos (quebra-cabeça/memória) — arquivos estáticos
+// em frontend/public/game-subjects/, servidos pelo Vite como estão (sem
+// passar pelo bundler, por isso a lista é gerada aqui manualmente a
+// partir do que existe na pasta, e não via import.meta.glob: esse recurso
+// do Vite só enxerga arquivos dentro do grafo de módulos, nunca o
+// conteúdo de public/). Adicionar/remover arquivo na pasta exige
+// atualizar esta lista também. `imageSrc` (caminho público) — não
+// `imageData` (base64) — é o que diferencia essas fotos embutidas das
+// fotos personalizadas que os pais sobem em GamesManager; os dois campos
+// são tratados de forma equivalente em todo o resto do código (qualquer
+// um serve como `src` de `<img>`).
 const BUILTIN_PUZZLE_SUBJECTS = [
-  { key: 'sol', emoji: '☀️', label: 'Sol', bg: '#FFE9B8' },
-  { key: 'casa', emoji: '🏠', label: 'Casa', bg: '#D9EAD3' },
-  { key: 'gato', emoji: '🐱', label: 'Gato', bg: '#F4D7C7' },
-  { key: 'arvore', emoji: '🌳', label: 'Árvore', bg: '#DCEAD1' },
-  { key: 'carro', emoji: '🚗', label: 'Carro', bg: '#CFE3F0' },
-  { key: 'estrela', emoji: '⭐', label: 'Estrela', bg: '#FBE8B0' },
+  { key: 'tuti-1', label: 'Tuti 1', imageSrc: '/game-subjects/Tuti%201.png' },
+  { key: 'tuti-2', label: 'Tuti 2', imageSrc: '/game-subjects/Tuti%202.png' },
+  { key: 'tuti-3', label: 'Tuti 3', imageSrc: '/game-subjects/Tuti%203.png' },
+  { key: 'tuti-4', label: 'Tuti 4', imageSrc: '/game-subjects/Tuti%204.png' },
+  { key: 'tuti-5', label: 'Tuti 5', imageSrc: '/game-subjects/Tuti%205.png' },
 ];
 
 const PUZZLE_LEVELS = [
@@ -465,21 +476,9 @@ function getButtonCardStyle(buttonStyle, color) {
   };
 }
 
-function makePuzzleImage(subject) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 320;
-  canvas.height = 320;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = subject.bg;
-  ctx.fillRect(0, 0, 320, 320);
-  ctx.font = '210px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(subject.emoji, 160, 175);
-  return canvas.toDataURL('image/png');
-}
-
-// Versão para imagens/fotos personalizadas: carrega a imagem e desenha em
+// Carrega a imagem (foto personalizada em base64 OU foto embutida servida
+// como arquivo estático, ambas funcionam do mesmo jeito aqui — `src` de
+// `<img>`/`Image` aceita tanto data: URL quanto caminho público) e desenha em
 // modo "cover" (preenche o quadrado 320x320 cortando o excesso), como uma
 // foto de perfil. Retorna uma Promise porque carregar a imagem é assíncrono.
 function makePuzzleImageFromPhoto(imageData) {
@@ -608,9 +607,82 @@ function playAudioBase64(base64, onEnd) {
   audio.play().catch(() => { if (onEnd) onEnd(); });
 }
 
+// Mesmo cache de áudio dos botões (`teajudo:audio-cache`, {[key]: {text,
+// audioBase64}}), só que endereçado por uma chave própria em vez do id do
+// botão — usado pelo Tuti (WelcomeScreen, TutiBubble), que não tem um
+// "botão" por trás. Lança erro se o backend não estiver configurado/no
+// ar; quem chama decide o fallback (ex: seguir sem áudio).
+async function getOrSynthesizeAudio(key, text) {
+  const cache = await loadJSON('teajudo:audio-cache', {});
+  const cached = cache[key];
+  if (cached && cached.text === text) return cached.audioBase64;
+
+  const resp = await fetch(`${API_URL}/api/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!resp.ok) throw new Error('status ' + resp.status);
+  const { audioBase64 } = await resp.json();
+  await saveJSON('teajudo:audio-cache', { ...cache, [key]: { text, audioBase64 } });
+  return audioBase64;
+}
+
 /* ---------- App principal ---------- */
 
 export default function TEAjudoApp() {
+  // Login do responsável (Fase 1) — vem ANTES de tudo o resto do app,
+  // inclusive do ChildPanel. `authChecked` separa "ainda não sabemos" de
+  // "sabemos que não tem sessão", pra não piscar a tela de login por um
+  // instante em quem já está logado.
+  const [authChecked, setAuthChecked] = useState(false);
+  const [responsavel, setResponsavel] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' });
+        if (resp.ok) {
+          const data = await resp.json();
+          setResponsavel(data.responsavel);
+        }
+      } catch (e) {
+        // Backend fora do ar — trata como "não logado"; a própria tela de
+        // login mostra um erro claro se a pessoa tentar entrar assim.
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      // mesmo com erro de rede, limpa a sessão localmente
+    }
+    setResponsavel(null);
+  }, []);
+
+  // Fase 4: status da assinatura decide se o ChildPanel fica disponível.
+  // `null` = "ainda não sabemos" — nesse caso NÃO bloqueia (evita um
+  // flash da tela de regularização em quem está com a assinatura em dia;
+  // o pior caso é um instante a mais de ChildPanel visível antes do
+  // status confirmar bloqueio, inofensivo). Só refetch em pontos que
+  // realmente podem ter mudado o status: no login e ao fechar a Área dos
+  // pais (onde a renovação acontece) — não fica em polling constante.
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  const refreshSubscriptionStatus = useCallback(async () => {
+    try {
+      const resp = await fetch(`${API_URL}/api/subscription/status`, { credentials: 'include' });
+      if (resp.ok) setSubscriptionStatus(await resp.json());
+    } catch (e) { /* backend fora do ar — mantém o último status conhecido */ }
+  }, []);
+  useEffect(() => {
+    if (responsavel) refreshSubscriptionStatus();
+  }, [responsavel, refreshSubscriptionStatus]);
+  const isBlocked = subscriptionStatus?.status === 'bloqueada';
+
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('panel'); // panel | games | parentGate | securitySetup | parent
   const [buttons, setButtons] = useState(DEFAULT_BUTTONS);
@@ -627,6 +699,26 @@ export default function TEAjudoApp() {
   const [pinError, setPinError] = useState('');
   const [securityMode, setSecurityMode] = useState('first'); // 'first' | 'recover'
   const [securityCancelTarget, setSecurityCancelTarget] = useState('parent');
+
+  // Tela de boas-vindas do Tuti — 1x por sessão de navegador
+  // (sessionStorage, não localStorage: deve voltar a aparecer se a aba
+  // fechar e abrir de novo). Depende de sessão logada (já existe, Fase 1)
+  // e de ter um childName salvo — sem isso não tem o que falar ("...
+  // assistente virtual de undefined!"), então melhor pular a tela do que
+  // mostrar uma frase quebrada (pode acontecer se a conta foi criada
+  // antes desta função existir, ou login num navegador novo — childName é
+  // local, não sincroniza entre dispositivos).
+  const [showWelcome, setShowWelcome] = useState(false);
+  useEffect(() => {
+    if (!responsavel || loading || !settings.childName) return;
+    let already = false;
+    try { already = sessionStorage.getItem('teajudo:welcome-shown') === '1'; } catch (e) {}
+    if (!already) setShowWelcome(true);
+  }, [responsavel, loading, settings.childName]);
+  const handleWelcomeFinish = useCallback(() => {
+    try { sessionStorage.setItem('teajudo:welcome-shown', '1'); } catch (e) {}
+    setShowWelcome(false);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -761,7 +853,7 @@ export default function TEAjudoApp() {
     }
   }, [settings, audioCache, addLog]);
 
-  if (loading) {
+  if (!authChecked || loading) {
     return (
       <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
         className="min-h-screen flex items-center justify-center bg-[#FAF7F2] text-[#2B2B2B]">
@@ -771,16 +863,36 @@ export default function TEAjudoApp() {
     );
   }
 
+  if (!responsavel) {
+    return (
+      <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
+        className="min-h-screen bg-[#FAF7F2] text-[#2B2B2B]">
+        <style>{GLOBAL_STYLES}</style>
+        <AuthGate onAuthenticated={setResponsavel} settings={settings} onSaveSettings={persistSettings} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
       className="min-h-screen bg-[#FAF7F2] text-[#2B2B2B] pb-16">
       <style>{GLOBAL_STYLES}</style>
 
+      {showWelcome && (
+        <WelcomeScreen childName={settings.childName} onFinish={handleWelcomeFinish} />
+      )}
+
       {showBreak && (
         <BreakOverlay pin={settings.pin} onContinue={() => setShowBreak(false)} />
       )}
 
-      {view === 'panel' && (
+      {(view === 'panel' || view === 'games') && isBlocked && (
+        <RegularizationScreen
+          onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
+        />
+      )}
+
+      {view === 'panel' && !isBlocked && (
         <ChildPanel
           buttons={buttons}
           onPlay={playPhrase}
@@ -795,7 +907,7 @@ export default function TEAjudoApp() {
         />
       )}
 
-      {view === 'games' && (
+      {view === 'games' && !isBlocked && (
         <GamesView
           onBack={() => setView('panel')}
           onFinishPuzzle={addPuzzleResult}
@@ -863,9 +975,344 @@ export default function TEAjudoApp() {
             setSecurityCancelTarget('parent');
             setView('securitySetup');
           }}
-          onClose={() => setView('panel')}
+          onClose={() => { setView('panel'); refreshSubscriptionStatus(); }}
+          responsavel={responsavel}
+          onLogout={handleLogout}
         />
       )}
+    </div>
+  );
+}
+
+/* ---------- Login do responsável (Fase 1) ---------- */
+
+function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot'
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [childName, setChildName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fluxo "esqueci a senha" — mesmo padrão de segurança do fluxo de troca
+  // de PIN (SecuritySetup): código de 6 dígitos gerado/conferido só no
+  // backend, nunca no navegador.
+  const [forgotStep, setForgotStep] = useState('email'); // 'email' | 'reset'
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotCode, setForgotCode] = useState('');
+  const [forgotNovaSenha, setForgotNovaSenha] = useState('');
+  const [demoCode, setDemoCode] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+
+  function backToLogin() {
+    setMode('login');
+    setForgotStep('email');
+    setForgotSuccess(false);
+    setDemoCode('');
+    setError('');
+    setSenha('');
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (!email || !senha) { setError('Preencha e-mail e senha.'); return; }
+    if (mode === 'register' && !nome.trim()) { setError('Preencha seu nome.'); return; }
+    if (mode === 'register' && !childName.trim()) { setError('Preencha o nome do seu filho(a).'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_URL}/api/auth/${mode === 'register' ? 'register' : 'login'}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mode === 'register' ? { nome: nome.trim(), email, senha } : { email, senha }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'status ' + resp.status);
+      // O nome da criança não é dado de conta (não vai pro backend) — é uma
+      // preferência local do app, igual às outras chaves de settings, então
+      // basta salvar no localStorage como o resto (ver DEFAULT_SETTINGS).
+      if (mode === 'register') {
+        onSaveSettings({ ...settings, childName: childName.trim() });
+      }
+      onAuthenticated(data.responsavel);
+    } catch (e2) {
+      setError(e2.message.includes('Failed to fetch') || e2.message.startsWith('status ')
+        ? 'Não foi possível conectar ao servidor agora — confira se o backend está rodando (ver CLAUDE.md).'
+        : e2.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotSendCode() {
+    setError('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) { setError('Digite um e-mail válido.'); return; }
+    setForgotCode(''); setDemoCode('');
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_URL}/api/auth/send-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'status ' + resp.status);
+      if (data.demo) setDemoCode(data.code);
+      setForgotStep('reset');
+    } catch (e2) {
+      setError('Não foi possível pedir o código agora — confira se o backend está rodando.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    setError('');
+    if (!forgotCode.trim()) { setError('Digite o código recebido por e-mail.'); return; }
+    if (forgotNovaSenha.length < 8) { setError('A nova senha precisa ter pelo menos 8 caracteres.'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail, code: forgotCode.trim(), novaSenha: forgotNovaSenha }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.ok === false) {
+        const messages = {
+          expired: 'Código expirado. Peça um novo.',
+          too_many_attempts: 'Muitas tentativas erradas. Peça um novo código.',
+          not_found: 'Código incorreto, expirado, ou e-mail não encontrado.',
+        };
+        throw new Error(messages[data.reason] || data.error || 'Não foi possível trocar a senha.');
+      }
+      setForgotSuccess(true);
+    } catch (e2) {
+      setError(e2.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (mode === 'forgot') {
+    return (
+      <div className="max-w-sm mx-auto px-4 pt-16 text-center">
+        <div className="text-4xl mb-3">🔑</div>
+        <h2 className="text-xl font-bold mb-1">Esqueci minha senha</h2>
+
+        {forgotSuccess ? (
+          <>
+            <p className="text-[#5A5A5A] mb-6 text-sm">Senha alterada! Já pode entrar com a nova senha.</p>
+            <button
+              onClick={backToLogin}
+              className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold transition-transform active:scale-95"
+            >
+              Ir para o login
+            </button>
+          </>
+        ) : forgotStep === 'email' ? (
+          <>
+            <p className="text-[#5A5A5A] mb-6 text-sm">Informe o e-mail da sua conta para receber um código de verificação.</p>
+            <input
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              type="email"
+              placeholder="email@exemplo.com"
+              className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
+            />
+            {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+            <button
+              onClick={handleForgotSendCode}
+              disabled={loading}
+              className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold mb-2 disabled:opacity-60 transition-transform active:scale-95"
+            >
+              {loading ? 'Enviando…' : 'Enviar código'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-[#5A5A5A] mb-6 text-sm">
+              {demoCode
+                ? 'Envio de e-mail não configurado no backend — use o código de teste abaixo.'
+                : `Enviamos um código para ${forgotEmail}. Não achou? Confira também a caixa de spam.`}
+            </p>
+            {demoCode && (
+              <div className="tea-popin bg-[#FFF8E8] border border-[#E4A93B] rounded-xl py-3 mb-4">
+                <p className="text-xs text-[#999] mb-1">Código de teste (modo demonstração):</p>
+                <p className="text-2xl font-bold tracking-[0.3em] text-[#B15E3E]">{demoCode}</p>
+              </div>
+            )}
+            <input
+              value={forgotCode}
+              onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              placeholder="Código de 6 dígitos"
+              className="border border-[#DDD] rounded-xl px-4 py-3 text-center text-xl w-full mb-3 tracking-widest"
+              maxLength={6}
+            />
+            <input
+              value={forgotNovaSenha}
+              onChange={(e) => setForgotNovaSenha(e.target.value)}
+              type="password"
+              placeholder="Nova senha (mín. 8 caracteres)"
+              className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
+              autoComplete="new-password"
+            />
+            {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+            <button
+              onClick={handleResetPassword}
+              disabled={loading}
+              className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold mb-2 disabled:opacity-60 transition-transform active:scale-95"
+            >
+              {loading ? 'Trocando…' : 'Trocar senha'}
+            </button>
+            <button onClick={() => setForgotStep('email')} className="text-sm text-[#5A5A5A] underline">Reenviar ou trocar e-mail</button>
+          </>
+        )}
+
+        <button onClick={backToLogin} className="mt-4 text-sm text-[#999] underline block mx-auto">Voltar para o login</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-sm mx-auto px-4 pt-16 text-center">
+      {/* Logo.png já traz a palavra "TEAjudo" desenhada — não repete o
+          texto por baixo (ver WelcomeScreen, mesma lógica). */}
+      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 w-auto mx-auto mb-3" />
+      <p className="text-[#5A5A5A] mb-6 text-sm">
+        {mode === 'login' ? 'Entre com sua conta para continuar.' : 'Crie sua conta para começar (7 dias grátis).'}
+      </p>
+
+      <form onSubmit={handleSubmit}>
+        {mode === 'register' && (
+          <>
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Seu nome"
+              className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
+              autoComplete="name"
+            />
+            <input
+              value={childName}
+              onChange={(e) => setChildName(e.target.value)}
+              placeholder="Nome do seu filho(a)"
+              className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
+            />
+          </>
+        )}
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          type="email"
+          placeholder="email@exemplo.com"
+          className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
+          autoComplete="email"
+        />
+        <input
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+          type="password"
+          placeholder="Senha"
+          className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
+          autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+        />
+        {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold mb-2 disabled:opacity-60 transition-transform active:scale-95"
+        >
+          {loading ? 'Aguarde…' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+        </button>
+      </form>
+
+      {mode === 'login' && (
+        <button onClick={() => { setMode('forgot'); setError(''); }} className="text-sm text-[#5A5A5A] underline block mx-auto mb-3">
+          Esqueci minha senha
+        </button>
+      )}
+
+      <button
+        onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setSenha(''); }}
+        className="text-sm text-[#2F6F62] underline block mx-auto"
+      >
+        {mode === 'login' ? 'Não tem conta? Criar agora' : 'Já tem conta? Entrar'}
+      </button>
+    </div>
+  );
+}
+
+/* ---------- Boas-vindas do Tuti (mascote) ---------- */
+// Tela cheia, 1x por sessão de navegador, logo após confirmar a sessão
+// (ver gating em TEAjudoApp). Vídeo mudo (o áudio de verdade é a voz
+// sintetizada) + Logo.png; fecha sozinha ~800ms depois de o mais longo
+// entre vídeo e áudio terminar, ou a qualquer momento via "Pular".
+function WelcomeScreen({ childName, onFinish }) {
+  const [closing, setClosing] = useState(false);
+  const [videoEnded, setVideoEnded] = useState(false);
+  const [audioEnded, setAudioEnded] = useState(false);
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+  const finishedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const audioBase64 = await getOrSynthesizeAudio(
+          `welcome:${childName}`,
+          `Olá, sou o Tuti, assistente virtual de ${childName}!`
+        );
+        if (cancelled) return;
+        playAudioBase64(audioBase64, () => { if (!cancelled) setAudioEnded(true); });
+      } catch (e) {
+        // Sem voz disponível (backend fora do ar/não configurado) — a tela
+        // continua funcionando só com o vídeo, sem travar esperando um
+        // áudio que nunca vai terminar.
+        if (!cancelled) setAudioUnavailable(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [childName]);
+
+  const finish = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setClosing(true);
+    setTimeout(onFinish, 400);
+  }, [onFinish]);
+
+  // Fecha 800ms depois do que terminar por último entre vídeo e áudio —
+  // o vídeo já para sozinho no último frame quando acaba (comportamento
+  // nativo do <video> sem loop), então não precisa pausar manualmente.
+  useEffect(() => {
+    if (finishedRef.current) return;
+    if (videoEnded && (audioEnded || audioUnavailable)) {
+      const t = setTimeout(finish, 800);
+      return () => clearTimeout(t);
+    }
+  }, [videoEnded, audioEnded, audioUnavailable, finish]);
+
+  return (
+    <div
+      className={`fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4 bg-[#FAF7F2] px-6 transition-opacity duration-400 ${closing ? 'opacity-0' : 'opacity-100'}`}
+    >
+      <button onClick={finish} className="absolute top-4 right-4 text-sm text-[#999] underline">
+        Pular
+      </button>
+      <video
+        src="/tuti/tuti-intro.mp4"
+        poster="/tuti/tuti-intro-poster.png"
+        muted
+        playsInline
+        autoPlay
+        onEnded={() => setVideoEnded(true)}
+        className="w-full max-w-xs rounded-3xl shadow-sm"
+      />
+      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 sm:h-20 w-auto" />
     </div>
   );
 }
@@ -898,6 +1345,38 @@ function BreakOverlay({ onContinue, pin }) {
         </div>
         {err && <p className="text-sm text-red-500">{err}</p>}
       </div>
+    </div>
+  );
+}
+
+/* ---------- Bloqueio por assinatura vencida (Fase 4) ---------- */
+// Substitui o ChildPanel (e a tela de jogos) quando a assinatura está
+// 'bloqueada' (vencida há 2+ dias — ver DIAS_PARA_BLOQUEAR no backend).
+// Nunca menciona valores/cobrança pra criança: é uma mensagem neutra
+// ("hora de uma pausa") com o mesmo botão de sempre pra entrar na Área
+// dos pais — quem resolve isso é o responsável, com o PIN, não a
+// criança lendo a tela.
+function RegularizationScreen({ onOpenParentGate }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center gap-4 relative">
+      <button
+        onClick={onOpenParentGate}
+        className="absolute top-4 right-4 p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm"
+        aria-label="Área dos pais"
+      >
+        <Lock size={20} />
+      </button>
+      <div className="text-5xl" aria-hidden="true">💛</div>
+      <h1 className="text-2xl font-bold text-[#2F6F62]">Hora de uma pausa</h1>
+      <p className="max-w-sm text-[#5A5A5A]">
+        O painel está pausado por enquanto. Peça pra um responsável abrir a Área dos pais (ícone no canto) pra continuar.
+      </p>
+      <button
+        onClick={onOpenParentGate}
+        className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-6 py-3 font-semibold transition-transform active:scale-95"
+      >
+        Área dos pais
+      </button>
     </div>
   );
 }
@@ -1132,6 +1611,68 @@ function ChildPanel({
 
 /* ---------- Jogos: seleção ---------- */
 
+// Bolha do Tuti — reutilizável (recebe `phrase`), hoje só usada na aba de
+// Jogos. Some sozinha depois do áudio + um tempo extra, ou ao tocar nela
+// ou no X; aparece só 1x por sessão de navegador (sessionStorage, por
+// `cacheKey` — permite reusar o componente em mais telas no futuro sem
+// uma esconder a outra por engano). `tuti-bubble-avatar.png` é um ícone
+// quadrado (não corpo inteiro/fundo transparente) — usado sem máscara,
+// como está.
+function TutiBubble({ phrase, cacheKey }) {
+  const [visible, setVisible] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const shownKey = `teajudo:bubble-shown:${cacheKey}`;
+
+  const close = useCallback(() => {
+    setClosing(true);
+    setTimeout(() => setVisible(false), 300);
+  }, []);
+
+  useEffect(() => {
+    let already = false;
+    try { already = sessionStorage.getItem(shownKey) === '1'; } catch (e) {}
+    if (already) return;
+    try { sessionStorage.setItem(shownKey, '1'); } catch (e) {}
+    setVisible(true);
+
+    let closeTimer;
+    let cancelled = false;
+    (async () => {
+      try {
+        const audioBase64 = await getOrSynthesizeAudio(cacheKey, phrase);
+        if (cancelled) return;
+        playAudioBase64(audioBase64, () => { closeTimer = setTimeout(close, 4000); });
+      } catch (e) {
+        if (!cancelled) closeTimer = setTimeout(close, 4000);
+      }
+    })();
+
+    return () => { cancelled = true; clearTimeout(closeTimer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`fixed bottom-0 right-4 z-40 flex flex-col items-end transition-opacity duration-300 ${closing ? 'opacity-0' : 'opacity-100'}`}>
+      <div className="tea-fadein relative bg-white rounded-2xl shadow-lg border border-[#EADFCB] px-4 py-3 mb-2 max-w-[220px] text-sm text-[#2B2B2B]">
+        <button onClick={close} aria-label="Fechar" className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-[#EADFCB] flex items-center justify-center text-[#999]">
+          <X size={12} />
+        </button>
+        {phrase}
+        <div className="absolute -bottom-1.5 right-8 w-3 h-3 bg-white border-r border-b border-[#EADFCB] rotate-45" />
+      </div>
+      <img
+        src="/tuti/tuti-bubble-avatar.png"
+        alt="Tuti"
+        onClick={close}
+        className="tea-fadein h-[100px] w-auto cursor-pointer"
+        style={{ animationDelay: '80ms' }}
+      />
+    </div>
+  );
+}
+
 function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects }) {
   const [gameType, setGameType] = useState(null); // null | 'puzzle' | 'memory'
   const [subject, setSubject] = useState(null);
@@ -1164,6 +1705,7 @@ function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects
   if (!gameType) {
     return (
       <div className="max-w-3xl mx-auto px-4 pt-6">
+        <TutiBubble phrase="Vamos nos divertir, tenho alguns jogos pra você!" cacheKey="games-intro" />
         <div className="flex items-center gap-2 mb-6">
           <button onClick={onBack} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
           <h1 className="text-2xl font-bold text-[#2F6F62]">Jogos</h1>
@@ -1207,10 +1749,7 @@ function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects
               className={`aspect-square rounded-2xl flex flex-col items-center justify-center gap-1 border-2 overflow-hidden ${subject?.key === s.key ? 'border-[#2F6F62]' : 'border-[#EADFCB]'}`}
               style={{ backgroundColor: s.bg || '#F3F0EA' }}
             >
-              {s.imageData
-                ? <img src={s.imageData} alt={s.label} className="w-full h-full object-cover" />
-                : <span className="text-3xl">{s.emoji}</span>}
-              {!s.imageData && <span className="text-xs font-semibold">{s.label}</span>}
+              <img src={s.imageData || s.imageSrc} alt={s.label} className="w-full h-full object-cover" />
             </button>
           ))}
         </div>
@@ -1279,10 +1818,9 @@ function PuzzleBoard({ subject, level, showTimer, onExit, onFinish }) {
   useEffect(() => {
     let cancelled = false;
     setImgSrc(null);
-    const build = subject.imageData
-      ? makePuzzleImageFromPhoto(subject.imageData)
-      : Promise.resolve(makePuzzleImage(subject));
-    build.then((src) => { if (!cancelled) setImgSrc(src); }).catch(() => {});
+    makePuzzleImageFromPhoto(subject.imageData || subject.imageSrc)
+      .then((src) => { if (!cancelled) setImgSrc(src); })
+      .catch(() => {});
     setPieces(shuffledArray(total));
     setMoves(0);
     setSeconds(0);
@@ -1609,9 +2147,7 @@ function MemoryBoard({ level, subjects, showTimer, onExit, onFinish }) {
               style={{ backgroundColor: faceUp ? (s.bg || '#F3F0EA') : '#2F6F62' }}
             >
               {faceUp
-                ? (s.imageData
-                    ? <img src={s.imageData} alt={s.label} className="w-full h-full object-cover" />
-                    : <span className="text-3xl">{s.emoji}</span>)
+                ? <img src={s.imageData || s.imageSrc} alt={s.label} className="w-full h-full object-cover" />
                 : <span className="text-2xl opacity-70">❓</span>}
             </button>
           );
@@ -1827,7 +2363,53 @@ function SecuritySetup({ settings, mode, onComplete, onCancel }) {
 
 /* ---------- Área dos pais ---------- */
 
-function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, readiness, onRequestPinChange, onClose }) {
+// Só aparece dentro da Área dos pais (nunca no ChildPanel — a criança não
+// deve ver nada sobre pagamento). Duas situações: 1) janela de 3/2/1 dias
+// antes do vencimento, mesmo gatilho do e-mail
+// (backend/src/lib/reminders.js); 2) já vencido ('atraso'/'bloqueada',
+// Fase 4) — nesse caso o aviso fica sempre visível até renovar, já que
+// não tem "janela de dias" que faça sentido pra atraso.
+function SubscriptionDueBanner({ onGoToSubscription }) {
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(`${API_URL}/api/subscription/status`, { credentials: 'include' });
+        if (resp.ok && !cancelled) setInfo(await resp.json());
+      } catch (e) { /* backend fora do ar — sem banner, não trava a Área dos pais */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!info) return null;
+
+  const vencendoEmBreve = ['trial', 'ativa'].includes(info.status)
+    && info.diasRestantes >= 1 && info.diasRestantes <= 3;
+  const vencido = info.status === 'atraso' || info.status === 'bloqueada';
+  if (!vencendoEmBreve && !vencido) return null;
+
+  const mensagem = vencido
+    ? (info.status === 'bloqueada'
+      ? 'A assinatura venceu e o painel da criança está pausado até renovar.'
+      : 'A assinatura venceu — renove logo pra não pausar o painel da criança.')
+    : `${info.status === 'trial' ? 'Seu período de teste' : 'Sua assinatura'} vence em ${info.diasRestantes} dia${info.diasRestantes === 1 ? '' : 's'}.`;
+
+  return (
+    <div className={`tea-fadein border rounded-2xl px-4 py-3 mb-4 flex items-center justify-between gap-3 flex-wrap ${vencido ? 'bg-[#FBE7E4] border-[#C0605A] text-[#8A3A34]' : 'bg-[#FBF0D9] border-[#E4A93B] text-[#7A5A12]'}`}>
+      <p className="text-sm font-semibold flex items-center gap-2">
+        <CreditCard size={16} className="shrink-0" />
+        {mensagem}
+      </p>
+      <button onClick={onGoToSubscription} className="text-sm font-semibold underline shrink-0">
+        Renovar agora
+      </button>
+    </div>
+  );
+}
+
+function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
   const [tab, setTab] = useState('botoes');
   return (
     <div className="max-w-4xl mx-auto px-4 pt-6">
@@ -1835,6 +2417,7 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
         <h1 className="text-2xl font-bold text-[#2F6F62]">Área dos pais</h1>
         <button onClick={onClose} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><X size={20} /></button>
       </div>
+      <SubscriptionDueBanner onGoToSubscription={() => setTab('config')} />
       <div className="flex gap-2 mb-6 flex-wrap">
         {[['botoes', 'Botões'], ['jogos', 'Jogos'], ['config', 'Configurações'], ['analise', 'Análise']].map(([k, l]) => (
           <button
@@ -1852,7 +2435,7 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
       <div key={tab} className="tea-fadein">
         {tab === 'botoes' && <ButtonsManager buttons={buttons} onSave={onSaveButtons} />}
         {tab === 'jogos' && <GamesManager customSubjects={customSubjects} onSave={onSaveSubjects} />}
-        {tab === 'config' && <SettingsPanel settings={settings} onSave={onSaveSettings} onRequestPinChange={onRequestPinChange} />}
+        {tab === 'config' && <SettingsPanel settings={settings} onSave={onSaveSettings} onRequestPinChange={onRequestPinChange} responsavel={responsavel} onLogout={onLogout} />}
         {tab === 'analise' && (
           <Analytics
             logs={logs}
@@ -2360,9 +2943,128 @@ function VoiceRecorder({ onCloned }) {
   );
 }
 
-function SettingsPanel({ settings, onSave, onRequestPinChange }) {
+const SUBSCRIPTION_STATUS_LABEL = {
+  trial: 'Período de teste',
+  ativa: 'Assinatura ativa',
+  atraso: 'Pagamento atrasado',
+  bloqueada: 'Assinatura bloqueada',
+};
+
+function formatDateBR(sqlDateTime) {
+  if (!sqlDateTime) return '';
+  // vem como 'YYYY-MM-DD HH:MM:SS' (UTC) — normaliza pra Date válido
+  const iso = sqlDateTime.replace(' ', 'T') + 'Z';
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
+
+// Mostra o estado atual da assinatura (via GET /api/subscription/status)
+// e o botão que gera um link de pagamento novo (POST
+// /api/subscription/checkout). A InfinitePay não tem cobrança recorrente
+// nativa — cada mês é um link avulso novo; por isso o texto do botão é
+// sempre uma ação explícita ("Assinar agora" / "Renovar assinatura"),
+// nunca implica em "cartão salvo cobrando sozinho".
+function SubscriptionCard() {
+  const [status, setStatus] = useState(null);
+  const [configured, setConfigured] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [error, setError] = useState('');
+  const [checkoutOpened, setCheckoutOpened] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [statusResp, configResp] = await Promise.all([
+        fetch(`${API_URL}/api/subscription/status`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/subscription/config`),
+      ]);
+      if (statusResp.ok) setStatus(await statusResp.json());
+      if (configResp.ok) setConfigured((await configResp.json()).checkoutConfigured);
+    } catch (e) {
+      setError(`Não foi possível consultar a assinatura em ${API_URL}.`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  async function handleCheckout() {
+    setCheckingOut(true);
+    setError('');
+    try {
+      const resp = await fetch(`${API_URL}/api/subscription/checkout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setError(data.error || 'Não foi possível gerar o link de pagamento.');
+        return;
+      }
+      window.open(data.checkoutUrl, '_blank', 'noopener,noreferrer');
+      setCheckoutOpened(true);
+    } catch (e) {
+      setError(`Não foi possível conectar ao backend em ${API_URL}.`);
+    } finally {
+      setCheckingOut(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
+      <h3 className="font-bold mb-3 flex items-center gap-2"><CreditCard size={18} /> Assinatura</h3>
+
+      {loading && <p className="text-sm text-[#999]">Carregando…</p>}
+
+      {!loading && status && (
+        <>
+          <p className="text-sm text-[#5A5A5A]">
+            Status: <span className="font-semibold">{SUBSCRIPTION_STATUS_LABEL[status.status] || status.status}</span>
+          </p>
+          <p className="text-xs text-[#999] mb-3">
+            {status.status === 'trial' || status.status === 'ativa'
+              ? `Válida até ${formatDateBR(status.vencimentoEm)}${status.diasRestantes >= 0 ? ` (${status.diasRestantes} dia${status.diasRestantes === 1 ? '' : 's'})` : ''}`
+              : `Venceu em ${formatDateBR(status.vencimentoEm)}`}
+            {' · R$ '}{(status.valorCentavos / 100).toFixed(2).replace('.', ',')}/mês
+          </p>
+
+          {configured ? (
+            <>
+              <button
+                onClick={handleCheckout}
+                disabled={checkingOut}
+                className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-4 py-2 font-semibold text-sm transition-transform active:scale-95 disabled:opacity-60"
+              >
+                {checkingOut ? 'Gerando link…' : status.status === 'trial' ? 'Assinar agora' : 'Renovar assinatura'}
+              </button>
+              {checkoutOpened && (
+                <p className="text-xs text-[#5A5A5A] mt-2 flex items-start gap-1">
+                  Depois de concluir o pagamento na aba que abriu, volte aqui e
+                  <button onClick={loadStatus} className="underline font-semibold inline-flex items-center gap-1 ml-1">
+                    <RefreshCw size={12} /> atualize o status
+                  </button>.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-[#999]">
+              Pagamento ainda não configurado neste servidor (backend/.env).
+            </p>
+          )}
+        </>
+      )}
+
+      {error && <p className="text-sm text-red-500 mt-2">{error}</p>}
+    </div>
+  );
+}
+
+function SettingsPanel({ settings, onSave, onRequestPinChange, responsavel, onLogout }) {
   const [local, setLocal] = useState(settings);
   const [saved, setSaved] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   function update(field, value) {
     setLocal((prev) => ({ ...prev, [field]: value }));
@@ -2372,9 +3074,34 @@ function SettingsPanel({ settings, onSave, onRequestPinChange }) {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }
+  async function handleLogoutClick() {
+    setLoggingOut(true);
+    try {
+      await onLogout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
+      {responsavel && (
+        <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
+          <h3 className="font-bold mb-3">Sua conta</h3>
+          <p className="text-sm text-[#5A5A5A]">{responsavel.nome}</p>
+          <p className="text-xs text-[#999] mb-3">{responsavel.email}</p>
+          <button
+            onClick={handleLogoutClick}
+            disabled={loggingOut}
+            className="bg-white border border-[#C0605A] text-[#C0605A] rounded-xl px-4 py-2 font-semibold text-sm transition-transform active:scale-95 disabled:opacity-60"
+          >
+            {loggingOut ? 'Saindo…' : 'Sair da conta'}
+          </button>
+        </div>
+      )}
+
+      <SubscriptionCard />
+
       <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
         <h3 className="font-bold mb-3 flex items-center gap-2"><Clock size={18} /> Tempo de uso</h3>
         <label className="flex items-center gap-2 mb-2">

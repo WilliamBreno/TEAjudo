@@ -59,6 +59,12 @@ para checar se o backend está no ar).
 - Envio de e-mail via API HTTP da SendGrid (`fetch` nativo, sem SDK)
 - `dotenv` — variáveis de ambiente · `cors` — libera o frontend
 - `fetch` nativo do Node (sem `node-fetch`) para chamar o ElevenLabs
+- `better-sqlite3` — banco de dados (login e assinatura; ver seção
+  "Banco de dados" abaixo)
+- `bcrypt` — hash de senha · `cookie-parser` — cookie de sessão assinado
+  (login dos responsáveis; ver seção "Login dos responsáveis" abaixo)
+- `node-cron` — agenda o job diário de lembrete de vencimento (ver seção
+  "Lembretes de vencimento" abaixo)
 
 ## Como rodar localmente
 Dois terminais:
@@ -103,16 +109,24 @@ async function saveJSON(key, value) {
 
 ## Estrutura de dados (chaves do localStorage, no frontend)
 - `teajudo:buttons` — array de botões: `{id, label, phrase, category, color,
-  emoji, iconVariant, imageData, locked}` — `emoji`/`iconVariant` e
-  `imageData` são mutuamente exclusivos (o formulário força escolher um ou
-  outro; a UI dá preferência a `imageData` quando os dois existem por algum
-  motivo). `iconVariant` é `'emoji'` (padrão, usa o campo `emoji`) ou
-  `'minimal'` (ignora `emoji` e mostra o ícone de linha fixo da categoria,
-  de `CATEGORY_ICONS` — escolhido no cadastro do botão, não é uma
-  preferência global do painel)
+  emoji, iconVariant, minimalIcon, imageData, locked}` — `emoji`/
+  `iconVariant`/`minimalIcon` e `imageData` são mutuamente exclusivos (o
+  formulário força escolher um ou outro; a UI dá preferência a
+  `imageData` quando os dois existem por algum motivo). `iconVariant` é
+  `'emoji'` (padrão, usa o campo `emoji`, texto livre — o pai pode digitar
+  ou colar qualquer emoji do teclado do aparelho, além dos atalhos
+  comuns) ou `'minimal'` (ignora `emoji` e mostra um ícone de linha,
+  escolhido pelo pai numa grade em `ButtonsManager` — `MINIMAL_ICON_LIBRARY`
+  tem as opções disponíveis; se o botão não tiver `minimalIcon` salvo,
+  cai na sugestão da categoria em `CATEGORY_DEFAULT_ICON`, via
+  `getMinimalIcon()`)
 - `teajudo:settings` — `{pin, dailyLimitMinutes, voiceEnabled, showTimer,
-  securityConfigured, parentEmail}` — **não guarda mais chaves de API**
-  (ElevenLabs e SendGrid/EmailJS foram para `backend/.env`)
+  securityConfigured, parentEmail, buttonStyle, reduceMotion, childName}`
+  — **não guarda mais chaves de API** (ElevenLabs e SendGrid/EmailJS foram
+  para `backend/.env`). `childName` (nome da criança, usado nas frases do
+  Tuti — ver seção "Mascote Tuti" abaixo) é capturado no formulário de
+  cadastro (`AuthGate`) e só existe localmente — não é dado de conta, não
+  vai pro backend, não sincroniza entre dispositivos
 - `teajudo:logs` — últimos 400 eventos de uso: `{ts, type, buttonId,
   category, label}`
 - `teajudo:puzzle-results` — últimos 200 resultados de quebra-cabeça:
@@ -120,17 +134,58 @@ async function saveJSON(key, value) {
 - `teajudo:memory-results` — últimos 200 resultados do jogo da memória:
   `{ts, level, pairCount, timeSeconds, moves, completed}`
 - `teajudo:puzzle-subjects` — figuras personalizadas (fotos) adicionadas
-  pelos pais: `{key, label, imageData}`. Somadas às 6 figuras embutidas
-  (`BUILTIN_PUZZLE_SUBJECTS`, desenhadas em canvas a partir de um emoji) via
-  `allSubjects` — usadas tanto no quebra-cabeça quanto no jogo da memória
+  pelos pais: `{key, label, imageData}`. Somadas às figuras embutidas
+  (`BUILTIN_PUZZLE_SUBJECTS`, fotos reais em `frontend/public/game-subjects/`
+  — ver seção "Mascote Tuti" abaixo) via `allSubjects` — usadas tanto no
+  quebra-cabeça quanto no jogo da memória
 - `teajudo:audio-cache` — cache de áudio da voz clonada:
   `{[buttonId]: {text, audioBase64}}` (sem `voiceId` — a voz agora é uma
   configuração única do servidor, não por requisição)
 - `teajudo:daily-usage` — `{date, seconds}` para o limite de tempo de uso
 
+## Banco de dados (backend, SQLite)
+Fase 0 de um sistema de login + assinatura paga (em construção, fases
+documentadas à parte). Arquivo único `backend/data/teajudo.db`
+(`better-sqlite3`, síncrono), gitignored igual a `voice-config.json` —
+criado e migrado automaticamente (`CREATE TABLE IF NOT EXISTS`) toda vez
+que o servidor sobe, em `lib/db.js`. É a **única** fonte de verdade sobre
+conta e assinatura — o frontend nunca decide sozinho se o acesso está
+liberado (isso viria de uma flag no `localStorage`, fácil de burlar
+limpando o navegador).
+
+Tudo o mais do app (botões, logs, resultados de jogos etc., listados
+acima) continua só no `localStorage` — não precisa de sincronia entre
+o tablet da criança e o celular dos pais, só a assinatura precisa ser
+"de verdade" no servidor.
+
+- `responsaveis` — `{id, nome, email UNIQUE, senha_hash, criado_em}`
+- `assinaturas` — `{id, responsavel_id, status ('trial'|'ativa'|'atraso'|
+  'bloqueada'), valor_centavos (default 2990 = R$29,90), vencimento_em,
+  ultimo_pagamento_em, infinitepay_order_nsu}` — um responsável pode ter
+  mais de uma linha ao longo do tempo; sempre pega a mais recente
+  (`getSubscriptionByResponsavel`, em `lib/subscription.js`)
+- `pagamentos` — `{id, assinatura_id, valor_centavos, metodo, status,
+  transaction_nsu, criado_em}` — histórico de cada cobrança
+- `voz_clonada_licenca` — `{responsavel_id, ativa, comprado_em}` — controla
+  o upsell da clonagem de voz, separado da assinatura mensal
+
+`lib/subscription.js` tem `TRIAL_DAYS` (constante, hoje 7 — fácil de
+mudar, inclusive pra 0 se quiser cobrar sem trial), `createTrialSubscription(responsavelId)`
+(chamada automaticamente no cadastro, `POST /api/auth/register`, Fase 1 —
+ver seção "Login dos responsáveis" abaixo) e `renewSubscription(...)`
+(chamada quando um pagamento é confirmado, Fase 2 — ver seção
+"Assinatura via InfinitePay" abaixo). A regra de quantos dias de atraso
+viram `'atraso'`/`'bloqueada'` ainda não existe — é da Fase 3/4.
+
+Detalhe de ambiente: `npm run dev` roda com `node --watch --watch-path=src`
+(não só `--watch`) porque, sem restringir o caminho observado, toda
+escrita no arquivo do banco (em `backend/data/`, fora de `src/`) reiniciava
+o servidor sozinho.
+
 ## API do backend
 Todas as rotas sob `/api`. CORS liberado só para `CORS_ORIGIN` (padrão
-`http://localhost:5173`).
+`http://localhost:5173`), com `credentials: true` (obrigatório pra rotas
+de sessão — ver "Login dos responsáveis" abaixo).
 
 | Rota | Método | Body | Resposta |
 |---|---|---|---|
@@ -140,8 +195,17 @@ Todas as rotas sob `/api`. CORS liberado só para `CORS_ORIGIN` (padrão
 | `/api/auth/send-code` | POST | `{ email }` | `{ ok, demo, code? }` — `code` só vem preenchido se `demo: true` (SendGrid não configurado) |
 | `/api/auth/verify-code` | POST | `{ email, code }` | `{ valid: boolean, reason? }` |
 | `/api/auth/status` | GET | — | `{ mailerConfigured: boolean }` |
+| `/api/auth/register` | POST | `{ nome, email, senha }` | `{ responsavel }` — cria conta, assinatura trial e já loga (seta cookie de sessão) |
+| `/api/auth/login` | POST | `{ email, senha }` | `{ responsavel }` — seta cookie de sessão |
+| `/api/auth/logout` | POST | — | `{ ok: true }` — limpa o cookie de sessão |
+| `/api/auth/me` | GET | — | `{ responsavel }` (401 se não houver sessão válida) |
+| `/api/auth/reset-password` | POST | `{ email, code, novaSenha }` | `{ ok: true }` — troca a senha num único passo (ver nota abaixo) |
 | `/api/voice/clone` | POST | multipart: `audio` (arquivo), `name` (opcional) | `{ ok, voiceId }` |
 | `/api/voice/status` | GET | — | `{ cloningAvailable, voiceConfigured, hasCustomVoice }` |
+| `/api/subscription/config` | GET | — | `{ checkoutConfigured: boolean }` |
+| `/api/subscription/status` | GET (auth) | — | `{ status, valorCentavos, vencimentoEm, ultimoPagamentoEm, diasRestantes }` |
+| `/api/subscription/checkout` | POST (auth) | — | `{ checkoutUrl }` — gera um link de pagamento novo na InfinitePay |
+| `/api/subscription/webhook` | POST | (chamado pela InfinitePay) | `{ ok: true }` — sempre 200; ver nota de segurança abaixo |
 
 Códigos de verificação: gerados em `backend/src/lib/codeStore.js`, guardados
 **em memória** (não em banco), com expiração de 10 min, cooldown de 30s
@@ -175,6 +239,249 @@ privacidade da ElevenLabs antes de usar esse recurso, mesmo sendo uma
 funcionalidade legítima de acessibilidade (equivalente a "voice banking",
 já usado clinicamente em outros contextos de AAC).
 
+## Login dos responsáveis (Fase 1)
+Antes de qualquer outra coisa (inclusive o `ChildPanel`), o app exige uma
+conta de responsável — separado do PIN da área dos pais, que continua
+existindo do jeito que sempre existiu (é uma segunda camada, pra impedir a
+criança de entrar nas Configurações, não uma alternativa ao login).
+
+`backend`: senha com `bcrypt` (`BCRYPT_ROUNDS = 10`, mínimo 8 caracteres),
+sessão via cookie assinado httpOnly (`cookie-parser`, não JWT) —
+`SESSION_COOKIE_NAME = 'teajudo_session'`, validade de 30 dias. Em
+produção (`NODE_ENV=production`) o cookie sai com `sameSite: 'none'` +
+`secure: true` (necessário pro cenário Vercel↔Render, domínios
+diferentes); em dev, `sameSite: 'lax'` sem `secure` (mesmo site, porta
+diferente). `COOKIE_SECRET` (`backend/.env`) é obrigatório em produção —
+o servidor recusa subir sem ele (`process.exit(1)`); em dev cai num valor
+fixo se deixar em branco. `lib/session.js::requireAuth` é o middleware que
+protege `GET /api/auth/me` e vai proteger as rotas de assinatura das
+próximas fases. `lib/responsaveis.js::toPublic()` sempre tira o
+`senha_hash` antes de qualquer resposta chegar no frontend.
+
+Cadastro (`POST /api/auth/register`) já cria a assinatura trial
+(`createTrialSubscription`, ver seção "Banco de dados" acima) e loga
+automaticamente — não tem passo de confirmar e-mail antes de poder usar
+o app (o trial em si é a fricção mínima).
+
+Recuperação de senha reaproveita o `codeStore.js`/`mailer.js` que já
+existia pra troca de PIN (mesmo código de 6 dígitos, mesmo modo demo se
+SendGrid não estiver configurado). Só que aqui é **um único passo
+atômico** (`POST /api/auth/reset-password` recebe `email` + `code` +
+`novaSenha` juntos), não "verificar código" seguido de "trocar senha" —
+porque `codeStore.js::verifyCode()` é de uso único (o código some do mapa
+assim que confere), então um fluxo de 2 passos consumiria o código no
+"verificar" e falharia no "trocar".
+
+`frontend`: componente `AuthGate` (logo depois de `TEAjudoApp` fechar, no
+arquivo `App.jsx`) com 3 modos (`'login' | 'register' | 'forgot'`), mesmo
+padrão visual do `SecuritySetup` (card centralizado, mesma paleta). Em
+`TEAjudoApp`, os estados `authChecked`/`responsavel` (não só
+`loading`/`view`) decidem o que renderizar: enquanto `!authChecked`,
+mostra o loading normal (evita "piscar" a tela de login pra quem já tem
+sessão válida); depois disso, `!responsavel` renderiza `AuthGate` no lugar
+de tudo o resto, inclusive `ChildPanel`. Um `useEffect` no mount chama
+`GET /api/auth/me` (com `credentials: 'include'`) pra restaurar a sessão
+ao recarregar a página. Logout mora em `SettingsPanel` → card "Sua conta"
+→ botão "Sair da conta" → `POST /api/auth/logout`. Toda chamada de auth
+usa `credentials: 'include'` (obrigatório pra cookie cross-origin
+funcionar em produção).
+
+## Assinatura via InfinitePay (Fase 2)
+R$29,90/mês, cobrado pelo Checkout Integrado da InfinitePay
+(`https://api.checkout.infinitepay.io`). Documentação oficial:
+[checkout-documentacao](https://www.infinitepay.io/checkout-documentacao) e
+[central de ajuda](https://ajuda.infinitepay.io/pt-BR/articles/10766888-como-usar-o-checkout-da-infinitepay).
+
+**Não existe assinatura recorrente nativa nessa API** — só link de
+pagamento avulso (`POST /links`, autenticado só pelo `handle`, a
+InfiniteTag pública do recebedor, sem API key). A "recorrência" mensal do
+TEAjudo é modelada gerando um **link novo a cada ciclo**: o responsável
+clica em "Assinar agora"/"Renovar assinatura", paga, e a assinatura fica
+`'ativa'` por 30 dias a partir do pagamento. Isso é a base que as Fases
+3 (lembrete de vencimento por e-mail) e 4 (atraso/bloqueio) vão usar —
+não tem cobrança automática de cartão salvo, então lembrar o responsável
+de renovar é essencial.
+
+`backend`: `lib/infinitepay.js` (`createPaymentLink`, `checkPayment`,
+`isCheckoutConfigured`) e `lib/pagamentos.js` (CRUD da tabela
+`pagamentos`). Fluxo em `routes/subscription.js`:
+1. `POST /checkout` cria uma linha `pagamentos` com `status='pendente'`,
+   monta `order_nsu = 'teajudo-p' + pagamento.id` (assim o id fica
+   embutido no próprio identificador — não precisa de coluna extra pra
+   mapear de volta) e chama `POST /links` na InfinitePay, devolvendo a
+   URL do checkout pro frontend abrir numa aba nova.
+2. Quando o pagamento é aprovado, a InfinitePay chama de volta
+   `POST /webhook` com o `order_nsu`, `transaction_nsu` e `invoice_slug`.
+   **A documentação da InfinitePay não menciona assinatura/HMAC nesse
+   payload** — ou seja, em teoria qualquer requisição forjada pra essa URL
+   seria indistinguível de uma de verdade. Por isso o webhook nunca
+   confia direto no corpo recebido: ele só usa isso como gatilho pra
+   perguntar de volta pra própria InfinitePay via `POST /payment_check`
+   (que devolve `paid`/`paid_amount` de forma independente) antes de
+   marcar o pagamento como pago e estender `vencimento_em` em 30 dias.
+   Requisições com `order_nsu` desconhecido ou já processado respondem
+   200 sem fazer nada (idempotente).
+3. `GET /status` (autenticado) é o que o frontend consulta pra saber o
+   estado atual — o `SubscriptionCard` (dentro de `SettingsPanel`) chama
+   isso no mount e depois de qualquer checkout.
+
+**Pré-requisito na conta InfinitePay do dono do app:** o "Checkout
+Externo" precisa estar habilitado manualmente em
+`app.infinitepay.io/external-checkout#configuracoes` — sem isso, `POST
+/links` responde 404 com `external_checkout_not_enabled` (foi o que
+aconteceu testando com um handle fictício; a InfinitePay reconheceu o
+formato da requisição, só recusou por causa dessa configuração de
+conta). **Já confirmado habilitado e funcionando** na conta de produção
+(`INFINITEPAY_HANDLE=william-breno-santos` em `backend/.env`, local,
+gitignored) — `POST /checkout` testado de ponta a ponta gerando uma URL
+de pagamento real em `checkout.infinitepay.io`, sem completar o
+pagamento de verdade (isso fica pra quando o webhook puder ser testado,
+ver abaixo). O botão "Assinar agora" no app cai graciosamente num aviso
+de "pagamento não configurado" enquanto `INFINITEPAY_HANDLE` estiver
+vazio — mesmo padrão de fallback do ElevenLabs/SendGrid.
+
+`BACKEND_PUBLIC_URL` (`.env`) só é necessária pra InfinitePay conseguir
+chamar o webhook de volta — em produção. Em `localhost` isso não é
+alcançável de fora, então em dev o link de pagamento ainda é gerado
+normalmente (testado, ver acima), só a confirmação automática do
+pagamento não chega. **Ainda não testado de ponta a ponta com um
+pagamento de verdade** — a InfinitePay não parece ter modo sandbox, então
+esse teste completo (link → pagar → webhook → assinatura vira `'ativa'`)
+fica pra depois do deploy do backend numa URL pública (ou usando um túnel
+tipo ngrok antes disso, se quiser antecipar), já que envolve dinheiro de
+verdade e não só configuração.
+
+`frontend`: `SubscriptionCard` (dentro de `SettingsPanel`, logo abaixo do
+card "Sua conta") mostra status/vencimento/valor e o botão de
+assinar/renovar; `window.open` manda o responsável pra página de
+pagamento da InfinitePay numa aba separada (o checkout em si acontece
+fora do domínio do TEAjudo).
+
+## Lembretes de vencimento (Fase 3)
+`backend`: `lib/reminders.js::checkDueDateReminders()` roda todo dia às
+9h (`node-cron`, agendado em `server.js`) e também uma vez no boot (cobre
+o processo ter reiniciado perto do horário agendado — hospedagens grátis
+derrubam o processo por inatividade). Para cada assinatura com status
+`'trial'` ou `'ativa'` (atraso/bloqueio é Fase 4), calcula quantos dias
+faltam (`subscription.js::diasRestantesAte`) e manda um e-mail
+(`mailer.js::sendDueDateReminderEmail`, mesmo padrão HTTP da SendGrid dos
+outros e-mails do projeto) só quando faltam exatamente **3, 2 ou 1** dia —
+não "todo dia que faltar ≤3", pra não repetir o mesmo aviso. A coluna nova
+`assinaturas.ultimo_lembrete_dias` (migração incremental via `ALTER
+TABLE` em `lib/db.js`, já que a tabela existia antes desta fase) guarda o
+último valor já avisado, então o job é seguro de rodar mais de uma vez no
+mesmo dia; `renewSubscription` zera essa coluna a cada renovação, pra um
+vencimento novo poder gerar avisos novos. Sem `SENDGRID_API_KEY`
+configurado, o envio falha silenciosamente (só um `console.warn`) — o
+resto do app continua funcionando normalmente, mesmo padrão de fallback
+já usado em todo o projeto.
+
+`frontend`: `SubscriptionDueBanner`, renderizado em `ParentArea` logo
+acima das abas (Botões/Jogos/Configurações/Análise) — visível em
+qualquer aba da Área dos pais, **nunca no `ChildPanel`** (a criança não
+deve ver nada sobre pagamento/vencimento). Usa o mesmo `GET
+/api/subscription/status` do `SubscriptionCard`, mas com sua própria
+busca independente (fetch simples, sem estado compartilhado). Aparece em
+duas situações (estendido na Fase 4 pra cobrir a segunda): faltando 1 a 3
+dias pro vencimento (mesmo gatilho do e-mail, some depois disso), ou
+`status` já `'atraso'`/`'bloqueada'` (aviso fica visível sempre, com cor
+mais forte, até renovar — não faz sentido ter "janela de dias" pra
+atraso). O botão "Renovar agora" só troca pra aba Configurações (onde
+mora o `SubscriptionCard` com o botão de checkout de verdade) — não
+inicia o pagamento direto do banner.
+
+## Atraso e bloqueio (Fase 4)
+`backend`: `lib/subscription.js::refreshOverdueStatus(assinatura)` — uma
+assinatura `'trial'`/`'ativa'` que passa do vencimento vira `'atraso'`
+depois de `DIAS_PARA_ATRASO` (1) dia, e `'bloqueada'` depois de
+`DIAS_PARA_BLOQUEAR` (2) dias — constantes fáceis de mudar, mesmo estilo
+do `TRIAL_DAYS`. **Só anda pra frente**: uma vez `'bloqueada'`, só volta
+pra `'ativa'` de verdade, via `renewSubscription` (pagamento confirmado
+no webhook) — nunca sozinha, mesmo que alguém edite `vencimento_em` pro
+futuro por engano. A transição é "sob demanda": `getSubscriptionByResponsavel`
+já chama `refreshOverdueStatus` antes de devolver a linha, então todo
+`GET /api/subscription/status` reflete o estado real na hora, sem
+depender do cron ter rodado naquele dia; o cron diário
+(`refreshAllOverdueStatuses` em `server.js`, junto com os lembretes da
+Fase 3) também roda a mesma checagem pra manter o banco em dia mesmo pra
+quem não abre o app.
+
+`frontend`: em `TEAjudoApp`, o estado `subscriptionStatus` é buscado uma
+vez ao confirmar o login e de novo toda vez que a Área dos pais fecha
+(`onClose` do `ParentArea`) — não fica em polling constante, só nos
+pontos em que o status realisticamente pode ter mudado (o pai só renova
+de dentro da Área dos pais). Enquanto `subscriptionStatus` ainda é `null`
+("não sabemos ainda"), o app **não bloqueia** — evita um flash da tela de
+bloqueio pra quem está em dia; o pior caso é um instante a mais do
+ChildPanel visível antes do status confirmar, inofensivo. Quando
+`status === 'bloqueada'`, `RegularizationScreen` substitui tanto o
+`ChildPanel` quanto o `GamesView` (`view === 'panel' | 'games'`) — mas
+`view === 'parentGate' | 'securitySetup' | 'parent'` são estados
+irmãos, não filhos do ChildPanel, então continuam alcançáveis
+normalmente pelo mesmo botão de cadeado de sempre, exatamente como o
+enunciado da fase pediu ("Área dos pais continua acessível via PIN").
+`RegularizationScreen` é deliberadamente neutra pra criança — nunca
+menciona assinatura, pagamento ou dinheiro, só "hora de uma pausa" e o
+mesmo botão de entrar na Área dos pais; quem resolve isso é o
+responsável, não a criança lendo a tela.
+
+## Mascote Tuti
+Ativos em `frontend/public/tuti/` (`Logo.png`, `tuti-intro.mp4`,
+`tuti-intro-poster.png`, `tuti-bubble-avatar.png`) — servidos pelo Vite
+em `/tuti/*`. `Logo.png` já traz a palavra "TEAjudo" desenhada (não só o
+mascote), então em todo lugar que usa a logo (favicon em `index.html`,
+topo do `AuthGate`, `WelcomeScreen`) é só a imagem — nenhum lugar escreve
+"TEAjudo" de novo em HTML por baixo dela.
+
+`tuti-bubble-avatar.png` é um ícone quadrado (busto, fundo azul sólido,
+estilo ícone de app) — não é a versão "corpo inteiro, fundo transparente"
+que o design original pedia para o personagem flutuante da bolha
+(`tuti-bubble-character.png`, que não existe ainda). Decisão registrada:
+usar esse arquivo mesmo assim, sem `border-radius`/máscara — o quadrado
+azul aparece flutuando no canto, funcional mas não é o efeito
+"personagem solto" pretendido. Trocar por `TutiBubble` para um arquivo de
+corpo inteiro com fundo transparente quando existir.
+
+`WelcomeScreen` (tela cheia, `frontend/src/App.jsx`) — aparece 1x por
+sessão de navegador (flag em `sessionStorage`, não `localStorage`: deve
+voltar depois de fechar e abrir a aba de novo), gatilho é sessão logada
++ `settings.childName` preenchido (sem os dois, pula — evita uma frase
+quebrada tipo "assistente virtual de undefined!" pra quem logou num
+navegador novo, já que `childName` é local e não sincroniza entre
+dispositivos). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
+("Olá, sou o Tuti, assistente virtual de {childName}!") via
+`getOrSynthesizeAudio` — mesmo cache de áudio dos botões
+(`teajudo:audio-cache`), só que endereçado por uma chave própria
+(`welcome:{childName}`) em vez do id do botão. Fecha sozinha ~800ms
+depois do que terminar por último entre vídeo e áudio (o vídeo já para
+no último frame sozinho, comportamento nativo do `<video>` sem `loop`);
+se a síntese de voz falhar (backend fora do ar/não configurado), a tela
+não trava esperando um áudio que nunca chega — segue só com o vídeo.
+Tem um botão "Pular" sempre visível.
+
+`TutiBubble` (componente reutilizável, recebe `phrase`/`cacheKey` —
+hoje só usado em `GamesView`) — personagem ancorado no canto inferior
+direito (`position: fixed`, sem cartão/fundo atrás) com um balão de fala,
+entrada única (`.tea-fadein`, já existia pro resto do app — reaproveitada
+em vez de criar uma keyframe nova) e fechamento automático ~4s depois do
+áudio (ou na hora, se tocar nela ou no X). Aparece só 1x por sessão de
+navegador por `cacheKey`, mesmo padrão do `WelcomeScreen`.
+
+Figuras dos jogos (`BUILTIN_PUZZLE_SUBJECTS`) — fotos reais em
+`frontend/public/game-subjects/` (hoje 5 ilustrações do próprio Tuti em
+cenas do dia a dia, ex: andando de bike, acampando), substituindo o
+desenho de emoji em canvas que existia antes (`makePuzzleImage`, removida
+— o quebra-cabeça e o jogo da memória agora só sabem lidar com foto,
+nunca mais com emoji). Cada subject ganhou um campo `imageSrc` (caminho
+público) equivalente ao `imageData` (base64) das fotos personalizadas dos
+pais — os dois são tratados de forma intercambiável em todo o código
+(`s.imageData || s.imageSrc`), então quebra-cabeça e jogo da memória não
+precisam saber a origem da foto. A lista é gerada manualmente a partir do
+que existe na pasta (não via `import.meta.glob`: esse recurso do Vite não
+enxerga arquivos em `public/`, só os que passam pelo bundler) — adicionar
+ou remover arquivo em `game-subjects/` exige atualizar
+`BUILTIN_PUZZLE_SUBJECTS` também.
+
 ## Decisões de design (não reverter sem motivo forte)
 Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 
@@ -189,6 +496,17 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre
   tem uma única imagem clara, não uma mistura confusa.
+- **Figuras dos jogos são fotos reais, não emoji** — quebra-cabeça e
+  jogo da memória usam `imageSrc`/`imageData` (nunca mais um emoji
+  desenhado em canvas). Emoji é um símbolo abstrato — reconhecer que
+  "🐱" representa "gato" já é um passo de abstração a mais; uma foto de
+  verdade tira essa camada extra, mesma lógica de por que as figuras
+  personalizadas que os pais sobem em `GamesManager` sempre foram foto,
+  nunca emoji. As figuras embutidas de hoje (`game-subjects/`) são do
+  próprio mascote Tuti em cenas do dia a dia — não objetos/animais
+  variados — o ideal continua sendo fotos genéricas e diversas (mais
+  fáceis de generalizar pra vida real da criança); ver pendência na lista
+  abaixo.
 - **Sem animação contínua/ambiente no painel da criança, com uma exceção
   deliberada** — de resto, só anima em resposta a uma ação real (tocar
   botão, completar quebra-cabeça); movimento constante pode
@@ -241,6 +559,12 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 ## Funcionalidades × componentes (frontend)
 | Funcionalidade | Onde está |
 |---|---|
+| Login/cadastro/recuperação de senha do responsável | `AuthGate` |
+| Status da assinatura + assinar/renovar (InfinitePay) | `SubscriptionCard` |
+| Aviso de vencimento próximo (Área dos pais, não no ChildPanel) | `SubscriptionDueBanner` |
+| Tela de bloqueio quando a assinatura vence (substitui o ChildPanel) | `RegularizationScreen` |
+| Tela de boas-vindas do Tuti (1x por sessão, vídeo + voz) | `WelcomeScreen` |
+| Bolha do Tuti com balão de fala (hoje só na aba Jogos) | `TutiBubble` |
 | Painel principal (botões falantes, cores vívidas) | `ChildPanel`, `getContrastText`, `shadeColor` |
 | Reprodução de áudio (chama `/api/tts` + fallback local) | `playPhrase` (em `TEAjudoApp`), `playAudioBase64`, `fallbackSpeak` |
 | Escolha de jogo (quebra-cabeça ou memória) | `GamesView` |
@@ -276,6 +600,18 @@ decidem o texto e para onde volta o botão cancelar.
 acontece no backend, o frontend só repassa o que a pessoa digitou.
 
 ## Pendências conhecidas
+- [ ] Trocar `tuti-bubble-avatar.png` (ícone quadrado, fundo azul sólido)
+      por uma versão de corpo inteiro com fundo transparente pro
+      personagem da `TutiBubble` ficar "solto" em vez de num quadrado —
+      ver seção "Mascote Tuti"
+- [ ] Só 5 fotos em `game-subjects/` (todas do próprio Tuti, não de
+      objetos/pessoas/animais variados) — o jogo da memória bloqueia os
+      níveis que precisam de mais pares do que há fotos disponíveis
+      (`unlocked = subjects.length >= l.pairs`, em `GamesView`): com 5
+      fotos embutidas e nenhuma personalizada, só os níveis de 3 e 4
+      pares abrem; os de 6 e 8 pares ficam bloqueados até os pais
+      cadastrarem fotos extra em `GamesManager` (ou até crescer a pasta
+      `game-subjects/`)
 - [ ] Migrar de `localStorage` para banco de dados real (Postgres/SQLite +
       Prisma, por exemplo) se precisar sincronizar entre o tablet da
       criança e o celular dos pais

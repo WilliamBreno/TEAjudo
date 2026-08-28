@@ -6,13 +6,17 @@
   "description": "Backend do TEAjudo: proxy seguro para voz clonada (ElevenLabs) e verificacao de PIN por e-mail.",
   "main": "src/server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
+    "dev": "node --watch --watch-path=src src/server.js",
     "start": "node src/server.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "node-cron": "^4.6.0"
   }
 }

@@ -58,3 +58,56 @@ export async function sendVerificationCodeEmail(toEmail, code) {
     return { sent: false, reason: 'send_failed' };
   }
 }
+
+// Lembrete de vencimento da assinatura (Fase 3) — ver lib/reminders.js
+// pra quando isso é disparado (3/2/1 dias antes de vencer).
+export async function sendDueDateReminderEmail(toEmail, { nome, diasRestantes, vencimentoEm }) {
+  if (!mailerConfigured) {
+    return { sent: false, reason: 'mailer_not_configured' };
+  }
+  const dataFormatada = new Date(vencimentoEm.replace(' ', 'T') + 'Z').toLocaleDateString('pt-BR');
+  const dia = diasRestantes === 1 ? 'dia' : 'dias';
+  try {
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: toEmail }] }],
+        from: { email: SENDGRID_FROM, name: 'TEAjudo' },
+        subject: `Sua assinatura do TEAjudo vence em ${diasRestantes} ${dia}`,
+        content: [
+          {
+            type: 'text/plain',
+            value: `Olá${nome ? ', ' + nome : ''}!\n\nSua assinatura do TEAjudo vence em ${diasRestantes} ${dia} (${dataFormatada}). Para não perder o acesso, renove pelo app em Área dos pais > Configurações > Assinatura.\n\nSe já renovou, pode ignorar este e-mail.`,
+          },
+          {
+            type: 'text/html',
+            value: `
+              <div style="font-family: sans-serif; max-width: 420px; margin: 0 auto;">
+                <h2 style="color:#2F6F62;">TEAjudo</h2>
+                <p>Olá${nome ? ', ' + nome : ''}!</p>
+                <p>Sua assinatura vence em <strong>${diasRestantes} ${dia}</strong> (${dataFormatada}).</p>
+                <p>Para não perder o acesso, renove pelo app em <strong>Área dos pais → Configurações → Assinatura</strong>.</p>
+                <p style="color:#777; font-size: 13px;">Se já renovou, pode ignorar este e-mail.</p>
+              </div>
+            `,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '');
+      console.error('Falha ao enviar e-mail de lembrete (SendGrid):', resp.status, detail);
+      return { sent: false, reason: 'send_failed' };
+    }
+    return { sent: true };
+  } catch (err) {
+    console.error('Falha ao enviar e-mail de lembrete (SendGrid):', err.message);
+    return { sent: false, reason: 'send_failed' };
+  }
+}
