@@ -124,13 +124,20 @@ router.post('/reset-password', async (req, res) => {
   if (novaSenha.length < SENHA_MIN_LEN) {
     return res.status(400).json({ error: `A senha precisa ter pelo menos ${SENHA_MIN_LEN} caracteres.` });
   }
-  const result = verifyCode(email, String(code).trim());
-  if (!result.valid) {
-    return res.status(400).json({ ok: false, reason: result.reason });
-  }
+  // Confere se a conta existe ANTES de consumir o código — verifyCode()
+  // é de uso único (apaga a linha ao confirmar), então checar depois
+  // jogaria fora um código certo sempre que o e-mail não tivesse conta
+  // (fica igual a "código errado" pra sempre, mesmo digitando certo — a
+  // pessoa nunca teria como saber que o problema real era não ter conta
+  // com esse e-mail). Mesma mensagem genérica 'not_found' nos dois casos
+  // (sem conta / código errado), então não vaza se o e-mail existe.
   const responsavel = findByEmail(email);
   if (!responsavel) {
     return res.status(404).json({ ok: false, reason: 'not_found' });
+  }
+  const result = verifyCode(email, String(code).trim());
+  if (!result.valid) {
+    return res.status(400).json({ ok: false, reason: result.reason });
   }
   const senhaHash = await bcrypt.hash(novaSenha, BCRYPT_ROUNDS);
   updateSenhaHash(responsavel.id, senhaHash);
