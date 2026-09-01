@@ -1324,9 +1324,16 @@ function WelcomeScreen({ childName, onFinish }) {
         onEnded={() => setVideoEnded(true)}
         className="w-full max-w-xs rounded-3xl shadow-sm"
       />
-      {/* Logo.png (atual, atualizada) já traz "TEAjudo" desenhado com as
-          letras coloridas — não repete o texto em HTML por baixo. */}
-      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 sm:h-20 w-auto" />
+      {/* Nome por extenso em HTML (não a imagem de Logo.png, que agora é
+          usada como a logo do painel principal) — T-E-A (sigla de
+          Transtorno do Espectro Autista) cada letra numa cor de
+          CATEGORY_META, "judo" na MESMA cor do A. */}
+      <div className="text-3xl sm:text-4xl font-bold" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
+        <span style={{ color: CATEGORY_META.sentimentos.color }}>T</span>
+        <span style={{ color: CATEGORY_META.pessoas.color }}>E</span>
+        <span style={{ color: CATEGORY_META.acoes.color }}>A</span>
+        <span style={{ color: CATEGORY_META.acoes.color }}>judo</span>
+      </div>
     </div>
   );
 }
@@ -1422,7 +1429,7 @@ function ChildPanel({
   return (
     <div className="max-w-3xl mx-auto px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-3xl font-bold text-[#2F6F62]">TEAjudo</h1>
+        <img src="/tuti/Logo.png" alt="TEAjudo" className="h-12 w-auto" />
         <div className="flex gap-2">
           <button onClick={onOpenGames} className="p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm" aria-label="Jogos">
             <PuzzleIcon size={22} />

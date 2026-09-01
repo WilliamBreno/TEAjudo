@@ -467,8 +467,10 @@ Ativos em `frontend/public/tuti/` (`Logo.png`, `tuti-intro.mp4`,
 `tuti-bubble-character.png`) — servidos pelo Vite em `/tuti/*`. `Logo.png`
 já traz a palavra "TEAjudo" desenhada (não só o mascote), então em todo
 lugar que usa a logo (favicon em `index.html`, topo do `AuthGate`,
-`WelcomeScreen`) é só a imagem — nenhum lugar escreve "TEAjudo" de novo em
-HTML por baixo dela.
+canto superior esquerdo do `ChildPanel` — substituindo o `<h1>TEAjudo</h1>`
+fixo em texto) é só a imagem, sem escrever "TEAjudo" de novo em HTML por
+baixo dela. A `WelcomeScreen` é a única exceção deliberada: mostra o
+nome por extenso em HTML (ver abaixo), não a imagem — decisão do usuário.
 
 `tuti-bubble-character.png` é a versão "corpo inteiro, fundo transparente,
 joinha" — usada sem `border-radius`/máscara na `TutiBubble`, o recorte
@@ -486,7 +488,10 @@ decisão explícita do usuário; antes era 1x por sessão via
 + `settings.childName` preenchido (sem os dois, pula — evita uma frase
 quebrada tipo "assistente virtual de undefined!" pra quem logou num
 navegador novo, já que `childName` é local e não sincroniza entre
-dispositivos). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
+dispositivos). Abaixo do vídeo, "TEAjudo" em texto HTML (não `Logo.png`,
+que virou a logo do `ChildPanel`) — T-E-A cada letra numa cor de
+`CATEGORY_META`, "judo" na mesma cor do A (decisão explícita do usuário,
+não a cor da marca). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
 ("Olá, sou o Tuti, assistente virtual de {childName}!") via
 `getOrSynthesizeAudio` — mesmo cache de áudio dos botões
 (`teajudo:audio-cache`), só que endereçado por uma chave própria
