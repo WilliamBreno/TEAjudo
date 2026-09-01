@@ -66,6 +66,19 @@ db.exec(`
     comprado_em TEXT
   );
 
+  -- Códigos de verificação por e-mail (troca de PIN e recuperação de
+  -- senha) — ver lib/codeStore.js. Precisa ser tabela, não Map em
+  -- memória: um reinício do processo (deploy novo, ou o serviço
+  -- "dormindo" por inatividade em hospedagens grátis) apagaria qualquer
+  -- código pendente, mesmo digitado certo e dentro do prazo.
+  CREATE TABLE IF NOT EXISTS codigos_verificacao (
+    email TEXT PRIMARY KEY,
+    code TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_sent_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_assinaturas_responsavel ON assinaturas(responsavel_id);
   CREATE INDEX IF NOT EXISTS idx_pagamentos_assinatura ON pagamentos(assinatura_id);
 `);

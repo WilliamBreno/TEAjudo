@@ -243,12 +243,14 @@ de sessão — ver "Login dos responsáveis" abaixo).
 | `/api/subscription/webhook` | POST | (chamado pela InfinitePay) | `{ ok: true }` — sempre 200; ver nota de segurança abaixo |
 
 Códigos de verificação: gerados em `backend/src/lib/codeStore.js`, guardados
-**em memória** (não em banco), com expiração de 10 min, cooldown de 30s
-entre reenvios pro mesmo e-mail, máximo de 5 tentativas erradas, e uso
-único (some do Map assim que verificado com sucesso). Isso é suficiente
-para um app de uso doméstico rodando num único processo — se um dia rodar
-em múltiplas instâncias/serverless, trocar por Redis ou uma tabela no
-banco (a lógica toda está isolada nesse arquivo).
+na tabela `codigos_verificacao` (não mais em memória — um Map em memória
+some toda vez que o processo reinicia, o que aconteceu de verdade em
+produção: pedir um código pouco antes de um redeploy/o serviço "dormir"
+por inatividade no Render fazia o código virar "e-mail não encontrado" na
+hora de verificar, mesmo digitado certo e dentro do prazo; corrigido
+persistindo no banco), com expiração de 10 min, cooldown de 30s entre
+reenvios pro mesmo e-mail, máximo de 5 tentativas erradas, e uso único
+(a linha é apagada assim que verificado com sucesso).
 
 ## Clonagem de voz (voz da criança ou de um adulto de confiança)
 `frontend`: componente `VoiceRecorder` (dentro de `SettingsPanel`) grava
@@ -303,9 +305,9 @@ existia pra troca de PIN (mesmo código de 6 dígitos, mesmo modo demo se
 SendGrid não estiver configurado). Só que aqui é **um único passo
 atômico** (`POST /api/auth/reset-password` recebe `email` + `code` +
 `novaSenha` juntos), não "verificar código" seguido de "trocar senha" —
-porque `codeStore.js::verifyCode()` é de uso único (o código some do mapa
-assim que confere), então um fluxo de 2 passos consumiria o código no
-"verificar" e falharia no "trocar".
+porque `codeStore.js::verifyCode()` é de uso único (a linha some da
+tabela assim que confere), então um fluxo de 2 passos consumiria o código
+no "verificar" e falharia no "trocar".
 
 `frontend`: componente `AuthGate` (logo depois de `TEAjudoApp` fechar, no
 arquivo `App.jsx`) com 3 modos (`'login' | 'register' | 'forgot'`), mesmo
@@ -656,9 +658,6 @@ acontece no backend, o frontend só repassa o que a pessoa digitou.
 - [ ] Migrar de `localStorage` para banco de dados real (Postgres/SQLite +
       Prisma, por exemplo) se precisar sincronizar entre o tablet da
       criança e o celular dos pais
-- [ ] Trocar o armazenamento em memória dos códigos de verificação
-      (`codeStore.js`) por algo persistente se o backend rodar em múltiplas
-      instâncias
 - [ ] Quebrar `frontend/src/App.jsx` em múltiplos arquivos/componentes
 - [ ] Editar botões existentes (hoje só dá para adicionar/remover/bloquear)
 - [ ] Editar/remover figuras personalizadas fica só em `GamesManager` —
