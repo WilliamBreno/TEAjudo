@@ -462,20 +462,20 @@ responsável, não a criança lendo a tela.
 
 ## Mascote Tuti
 Ativos em `frontend/public/tuti/` (`Logo.png`, `tuti-intro.mp4`,
-`tuti-intro-poster.png`, `tuti-bubble-avatar.png`) — servidos pelo Vite
-em `/tuti/*`. `Logo.png` já traz a palavra "TEAjudo" desenhada (não só o
-mascote), então em todo lugar que usa a logo (favicon em `index.html`,
-topo do `AuthGate`, `WelcomeScreen`) é só a imagem — nenhum lugar escreve
-"TEAjudo" de novo em HTML por baixo dela.
+`tuti-bubble-character.png`) — servidos pelo Vite em `/tuti/*`. `Logo.png`
+já traz a palavra "TEAjudo" desenhada (não só o mascote), então em todo
+lugar que usa a logo (favicon em `index.html`, topo do `AuthGate`,
+`WelcomeScreen`) é só a imagem — nenhum lugar escreve "TEAjudo" de novo em
+HTML por baixo dela.
 
-`tuti-bubble-avatar.png` é um ícone quadrado (busto, fundo azul sólido,
-estilo ícone de app) — não é a versão "corpo inteiro, fundo transparente"
-que o design original pedia para o personagem flutuante da bolha
-(`tuti-bubble-character.png`, que não existe ainda). Decisão registrada:
-usar esse arquivo mesmo assim, sem `border-radius`/máscara — o quadrado
-azul aparece flutuando no canto, funcional mas não é o efeito
-"personagem solto" pretendido. Trocar por `TutiBubble` para um arquivo de
-corpo inteiro com fundo transparente quando existir.
+`tuti-bubble-character.png` é a versão "corpo inteiro, fundo transparente,
+joinha" — usada sem `border-radius`/máscara na `TutiBubble`, o recorte
+transparente já dá o efeito de personagem solto flutuando no canto. O
+`<video>` da `WelcomeScreen` não usa mais atributo `poster` (o arquivo que
+existia ali era na verdade essa mesma imagem do personagem, só com nome
+trocado) — sem `poster`, o navegador mostra o primeiro frame do próprio
+vídeo enquanto carrega, comportamento nativo, sem precisar de imagem
+separada.
 
 `WelcomeScreen` (tela cheia, `frontend/src/App.jsx`) — aparece toda vez
 que a sessão é confirmada (login novo OU recarregar a página já logado —
@@ -645,10 +645,6 @@ decidem o texto e para onde volta o botão cancelar.
 acontece no backend, o frontend só repassa o que a pessoa digitou.
 
 ## Pendências conhecidas
-- [ ] Trocar `tuti-bubble-avatar.png` (ícone quadrado, fundo azul sólido)
-      por uma versão de corpo inteiro com fundo transparente pro
-      personagem da `TutiBubble` ficar "solto" em vez de num quadrado —
-      ver seção "Mascote Tuti"
 - [ ] Só 5 fotos em `game-subjects/` (todas do próprio Tuti, não de
       objetos/pessoas/animais variados) — o jogo da memória bloqueia os
       níveis que precisam de mais pares do que há fotos disponíveis

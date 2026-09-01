@@ -1318,7 +1318,6 @@ function WelcomeScreen({ childName, onFinish }) {
       </button>
       <video
         src="/tuti/tuti-intro.mp4"
-        poster="/tuti/tuti-intro-poster.png"
         muted
         playsInline
         autoPlay
@@ -1640,9 +1639,9 @@ function ChildPanel({
 // bolha na 4ª, 8ª, 12ª... visita (`contador % 4 === 0`) — decisão
 // explícita do usuário, pra não virar um elemento repetitivo toda vez.
 //
-// `tuti-bubble-avatar.png` é um ícone quadrado (não corpo inteiro/fundo
-// transparente que o design pede) — usado sem máscara, como está; ver
-// pendência no CLAUDE.md.
+// `tuti-bubble-character.png` (corpo inteiro, fundo transparente) — sem
+// máscara/border-radius, o próprio recorte transparente já dá o efeito
+// de personagem solto.
 function TutiBubble({ phrase, tabKey }) {
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -1691,7 +1690,7 @@ function TutiBubble({ phrase, tabKey }) {
         <div className="absolute -bottom-1.5 right-8 w-3 h-3 bg-white border-r border-b border-[#EADFCB] rotate-45" />
       </div>
       <img
-        src="/tuti/tuti-bubble-avatar.png"
+        src="/tuti/tuti-bubble-character.png"
         alt="Tuti"
         onClick={close}
         className="tea-fadein h-[100px] w-auto cursor-pointer"
