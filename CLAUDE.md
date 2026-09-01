@@ -98,10 +98,14 @@ Secure` configurado certinho no backend, a sessão se perdia a cada
 recarregamento da página. Com o proxy, toda chamada de API sai do próprio
 `te-ajudo-chi.vercel.app` do ponto de vista do navegador, então o cookie
 vira "primeira parte" e para de ser bloqueado. No Vercel, a variável
-`VITE_API_URL` fica como **string vazia** (não apontando direto pro
-Render) — por isso `API_URL` usa `??` em vez de `||` no `App.jsx`: com
-`||`, uma string vazia (falsy) cairia no fallback de `localhost:3001` por
-engano.
+`VITE_API_URL` **não aponta pro Render** — mas o painel do Vercel não
+deixa salvar uma variável com valor vazio (validação própria da
+interface), então em vez de depender de string vazia, `App.jsx` só trata
+o valor como URL de destino se ele começar com `http`; qualquer outro
+valor (ex: `same-origin`, ou qualquer placeholder) vira string vazia e as
+chamadas usam caminho relativo (`/api/...`, same-origin, ativando o
+proxy). Configure `VITE_API_URL` no Vercel com qualquer texto que não
+comece com `http` (ex: `same-origin`).
 
 Variáveis obrigatórias no Render (backend), além das já documentadas em
 `.env.example`: `COOKIE_SECRET` (sem ela, o servidor recusa subir com
@@ -491,13 +495,22 @@ se a síntese de voz falhar (backend fora do ar/não configurado), a tela
 não trava esperando um áudio que nunca chega — segue só com o vídeo.
 Tem um botão "Pular" sempre visível.
 
-`TutiBubble` (componente reutilizável, recebe `phrase`/`cacheKey` —
-hoje só usado em `GamesView`) — personagem ancorado no canto inferior
-direito (`position: fixed`, sem cartão/fundo atrás) com um balão de fala,
+`TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
+arquitetado pra qualquer aba que não seja o `ChildPanel`, hoje só usado
+em `GamesView`; uma aba nova no futuro só precisa renderizar
+`<TutiBubble tabKey="..." phrase="..." />` pra ganhar o mesmo
+comportamento) — personagem ancorado no canto inferior direito
+(`position: fixed`, sem cartão/fundo atrás) com um balão de fala,
 entrada única (`.tea-fadein`, já existia pro resto do app — reaproveitada
 em vez de criar uma keyframe nova) e fechamento automático ~4s depois do
-áudio (ou na hora, se tocar nela ou no X). Aparece só 1x por sessão de
-navegador por `cacheKey`, mesmo padrão do `WelcomeScreen`.
+áudio (ou na hora, se tocar nela ou no X). Frequência: contador por aba
+em `localStorage` (`teajudo:tuti-bubble-visits:<tabKey>`, não
+`sessionStorage` — precisa sobreviver entre sessões), incrementado a
+cada entrada na aba; só renderiza a bolha na 4ª, 8ª, 12ª... visita
+(`contador % 4 === 0`) — decisão explícita do usuário, pra não virar um
+elemento repetitivo toda vez. O `ChildPanel` nunca renderiza esse
+componente, então "voltar pro painel" nunca conta como visita de
+nenhuma aba.
 
 Figuras dos jogos (`BUILTIN_PUZZLE_SUBJECTS`) — fotos reais em
 `frontend/public/game-subjects/` (hoje 5 ilustrações do próprio Tuti em

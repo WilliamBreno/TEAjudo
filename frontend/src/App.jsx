@@ -15,14 +15,19 @@ import {
 // Endereço do servidor (ver pasta ../backend). Configurável via .env
 // (VITE_API_URL) — cai em localhost:3001 se não for definido.
 //
-// Em produção, VITE_API_URL é uma STRING VAZIA de propósito: o Vercel
-// repassa /api/* pro backend do Render por baixo dos panos (ver
-// vercel.json), então o navegador nunca sabe que existe um domínio
-// separado — é tudo "mesmo site" do ponto de vista dele, e o cookie de
+// Em produção, VITE_API_URL fica com um valor "placeholder" qualquer
+// (ex: "same-origin") em vez de uma URL de verdade — o painel do Vercel
+// não deixa salvar variável com valor vazio, então não dá pra depender
+// de string vazia como sinal. Em vez disso, só aceitamos o valor como
+// URL de destino se ele realmente PARECER uma URL (começa com "http");
+// qualquer outra coisa vira string vazia, e as chamadas passam a usar
+// caminho relativo (`/api/...`), same-origin. O Vercel repassa `/api/*`
+// pro backend do Render por baixo dos panos (ver vercel.json), então o
+// navegador nunca sabe que existe um domínio separado — o cookie de
 // sessão (SameSite=None) para de ser tratado como cookie de terceiro e
-// bloqueado. Por isso `??` em vez de `||`: com `||`, uma string vazia
-// (falsy) cairia no fallback de localhost por engano.
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+// bloqueado.
+const rawApiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const API_URL = rawApiUrl.startsWith('http') ? rawApiUrl : '';
 
 /* ---------- Design tokens & dados base ---------- */
 
@@ -1320,17 +1325,9 @@ function WelcomeScreen({ childName, onFinish }) {
         onEnded={() => setVideoEnded(true)}
         className="w-full max-w-xs rounded-3xl shadow-sm"
       />
-      {/* Nome por extenso em HTML (não a imagem estática de Logo.png) —
-          decisão explícita do usuário: T-E-A (sigla de Transtorno do
-          Espectro Autista) cada letra numa cor de CATEGORY_META, "judo"
-          na MESMA cor do A (não a cor da marca — pedido específico daqui,
-          diferente do resto do app onde Logo.png é usada como está). */}
-      <div className="text-3xl sm:text-4xl font-bold" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
-        <span style={{ color: CATEGORY_META.sentimentos.color }}>T</span>
-        <span style={{ color: CATEGORY_META.pessoas.color }}>E</span>
-        <span style={{ color: CATEGORY_META.acoes.color }}>A</span>
-        <span style={{ color: CATEGORY_META.acoes.color }}>judo</span>
-      </div>
+      {/* Logo.png (atual, atualizada) já traz "TEAjudo" desenhado com as
+          letras coloridas — não repete o texto em HTML por baixo. */}
+      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 sm:h-20 w-auto" />
     </div>
   );
 }
@@ -1629,17 +1626,26 @@ function ChildPanel({
 
 /* ---------- Jogos: seleção ---------- */
 
-// Bolha do Tuti — reutilizável (recebe `phrase`), hoje só usada na aba de
-// Jogos. Some sozinha depois do áudio + um tempo extra, ou ao tocar nela
-// ou no X; aparece só 1x por sessão de navegador (sessionStorage, por
-// `cacheKey` — permite reusar o componente em mais telas no futuro sem
-// uma esconder a outra por engano). `tuti-bubble-avatar.png` é um ícone
-// quadrado (não corpo inteiro/fundo transparente) — usado sem máscara,
-// como está.
-function TutiBubble({ phrase, cacheKey }) {
+// Bolha do Tuti — reutilizável (props `phrase` + `tabKey`), pensada pra
+// qualquer aba que não seja o painel principal (`ChildPanel`) — hoje só
+// "Jogos" usa, mas uma aba nova no futuro só precisa renderizar
+// `<TutiBubble tabKey="..." phrase="..." />` pra ganhar o mesmo
+// comportamento; o `ChildPanel` nunca renderiza esse componente, então
+// "voltar pro painel" nunca conta como visita de nenhuma aba.
+//
+// Frequência: um contador por aba em `localStorage` (não `sessionStorage`
+// — precisa sobreviver entre sessões/dias), incrementado toda vez que a
+// pessoa entra na aba (o componente monta de novo a cada entrada, já que
+// `view === 'games'` desmonta o `GamesView` ao sair). Só renderiza a
+// bolha na 4ª, 8ª, 12ª... visita (`contador % 4 === 0`) — decisão
+// explícita do usuário, pra não virar um elemento repetitivo toda vez.
+//
+// `tuti-bubble-avatar.png` é um ícone quadrado (não corpo inteiro/fundo
+// transparente que o design pede) — usado sem máscara, como está; ver
+// pendência no CLAUDE.md.
+function TutiBubble({ phrase, tabKey }) {
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
-  const shownKey = `teajudo:bubble-shown:${cacheKey}`;
 
   const close = useCallback(() => {
     setClosing(true);
@@ -1647,17 +1653,21 @@ function TutiBubble({ phrase, cacheKey }) {
   }, []);
 
   useEffect(() => {
-    let already = false;
-    try { already = sessionStorage.getItem(shownKey) === '1'; } catch (e) {}
-    if (already) return;
-    try { sessionStorage.setItem(shownKey, '1'); } catch (e) {}
+    const visitsKey = `teajudo:tuti-bubble-visits:${tabKey}`;
+    let count = 1;
+    try {
+      count = (parseInt(localStorage.getItem(visitsKey), 10) || 0) + 1;
+      localStorage.setItem(visitsKey, String(count));
+    } catch (e) {}
+
+    if (count % 4 !== 0) return;
     setVisible(true);
 
     let closeTimer;
     let cancelled = false;
     (async () => {
       try {
-        const audioBase64 = await getOrSynthesizeAudio(cacheKey, phrase);
+        const audioBase64 = await getOrSynthesizeAudio(`tuti-bubble:${tabKey}`, phrase);
         if (cancelled) return;
         playAudioBase64(audioBase64, () => { closeTimer = setTimeout(close, 4000); });
       } catch (e) {
@@ -1723,7 +1733,7 @@ function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects
   if (!gameType) {
     return (
       <div className="max-w-3xl mx-auto px-4 pt-6">
-        <TutiBubble phrase="Vamos nos divertir, tenho alguns jogos pra você!" cacheKey="games-intro" />
+        <TutiBubble phrase="Vamos nos divertir, tenho alguns jogos pra você!" tabKey="jogos" />
         <div className="flex items-center gap-2 mb-6">
           <button onClick={onBack} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
           <h1 className="text-2xl font-bold text-[#2F6F62]">Jogos</h1>
