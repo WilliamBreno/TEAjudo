@@ -17,12 +17,12 @@ router.post('/send-code', async (req, res) => {
   if (!email || !EMAIL_RE.test(email)) {
     return res.status(400).json({ error: 'E-mail inválido.' });
   }
-  if (!canSend(email)) {
+  if (!(await canSend(email))) {
     return res.status(429).json({ error: 'Aguarde antes de pedir outro código.' });
   }
 
   const code = generateCode();
-  saveCode(email, code);
+  await saveCode(email, code);
 
   const result = await sendVerificationCodeEmail(email, code);
 
@@ -39,12 +39,12 @@ router.post('/send-code', async (req, res) => {
   return res.json({ ok: true, demo: true, code, reason: result.reason });
 });
 
-router.post('/verify-code', (req, res) => {
+router.post('/verify-code', async (req, res) => {
   const { email, code } = req.body || {};
   if (!email || !code) {
     return res.status(400).json({ error: 'E-mail e código são obrigatórios.' });
   }
-  const result = verifyCode(email, String(code).trim());
+  const result = await verifyCode(email, String(code).trim());
   if (!result.valid) {
     return res.status(400).json({ valid: false, reason: result.reason });
   }
@@ -71,14 +71,14 @@ router.post('/register', async (req, res) => {
   if (!senha || senha.length < SENHA_MIN_LEN) {
     return res.status(400).json({ error: `A senha precisa ter pelo menos ${SENHA_MIN_LEN} caracteres.` });
   }
-  if (findByEmail(email)) {
+  if (await findByEmail(email)) {
     return res.status(409).json({ error: 'Já existe uma conta com esse e-mail.' });
   }
   const senhaHash = await bcrypt.hash(senha, BCRYPT_ROUNDS);
-  const responsavel = createResponsavel({ nome: nome.trim(), email, senhaHash });
+  const responsavel = await createResponsavel({ nome: nome.trim(), email, senhaHash });
   // Toda conta nova começa com um período de teste — ver TRIAL_DAYS em
   // lib/subscription.js.
-  createTrialSubscription(responsavel.id);
+  await createTrialSubscription(responsavel.id);
   setSessionCookie(res, responsavel.id);
   res.json({ ok: true, responsavel: toPublic(responsavel) });
 });
@@ -88,7 +88,7 @@ router.post('/login', async (req, res) => {
   if (!email || !senha) {
     return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
   }
-  const responsavel = findByEmail(email);
+  const responsavel = await findByEmail(email);
   // Mensagem genérica pros dois casos (e-mail não cadastrado / senha
   // errada) — não dá pista de qual dos dois está errado.
   const negar = () => res.status(401).json({ error: 'E-mail ou senha incorretos.' });
@@ -131,16 +131,16 @@ router.post('/reset-password', async (req, res) => {
   // pessoa nunca teria como saber que o problema real era não ter conta
   // com esse e-mail). Mesma mensagem genérica 'not_found' nos dois casos
   // (sem conta / código errado), então não vaza se o e-mail existe.
-  const responsavel = findByEmail(email);
+  const responsavel = await findByEmail(email);
   if (!responsavel) {
     return res.status(404).json({ ok: false, reason: 'not_found' });
   }
-  const result = verifyCode(email, String(code).trim());
+  const result = await verifyCode(email, String(code).trim());
   if (!result.valid) {
     return res.status(400).json({ ok: false, reason: result.reason });
   }
   const senhaHash = await bcrypt.hash(novaSenha, BCRYPT_ROUNDS);
-  updateSenhaHash(responsavel.id, senhaHash);
+  await updateSenhaHash(responsavel.id, senhaHash);
   res.json({ ok: true });
 });
 

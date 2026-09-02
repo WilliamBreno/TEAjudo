@@ -1,7 +1,7 @@
 // Helpers de assinatura usados desde a Fase 1 (cadastro cria o trial) até
 // a Fase 4 (atraso/bloqueio).
 
-import { db } from './db.js';
+import { dbGet, dbAll, dbRun } from './db.js';
 
 // Fácil de mudar, inclusive pra 0 se quiser cobrar sem período de teste.
 export const TRIAL_DAYS = 7;
@@ -25,17 +25,17 @@ export function diasRestantesAte(vencimentoEm) {
   return Math.ceil((vencimento.getTime() - Date.now()) / 86400000);
 }
 
-export function createTrialSubscription(responsavelId) {
+export async function createTrialSubscription(responsavelId) {
   const vencimento = toSqlDateTime(new Date(Date.now() + TRIAL_DAYS * 86400000));
-  const info = db.prepare(`
-    INSERT INTO assinaturas (responsavel_id, status, vencimento_em)
-    VALUES (?, 'trial', ?)
-  `).run(responsavelId, vencimento);
+  const info = await dbRun(
+    "INSERT INTO assinaturas (responsavel_id, status, vencimento_em) VALUES (?, 'trial', ?)",
+    [responsavelId, vencimento]
+  );
   return getSubscriptionById(info.lastInsertRowid);
 }
 
-export function getSubscriptionById(id) {
-  return db.prepare('SELECT * FROM assinaturas WHERE id = ?').get(id);
+export async function getSubscriptionById(id) {
+  return dbGet('SELECT * FROM assinaturas WHERE id = ?', [id]);
 }
 
 // Um responsável pode, na teoria, acabar com mais de uma linha ao longo
@@ -43,10 +43,11 @@ export function getSubscriptionById(id) {
 // atraso/bloqueio (ver refreshOverdueStatus) antes de devolver, então
 // quem chama essa função sempre vê o status em dia, sem precisar esperar
 // o cron rodar de novo.
-export function getSubscriptionByResponsavel(responsavelId) {
-  const assinatura = db.prepare(`
-    SELECT * FROM assinaturas WHERE responsavel_id = ? ORDER BY id DESC LIMIT 1
-  `).get(responsavelId);
+export async function getSubscriptionByResponsavel(responsavelId) {
+  const assinatura = await dbGet(
+    'SELECT * FROM assinaturas WHERE responsavel_id = ? ORDER BY id DESC LIMIT 1',
+    [responsavelId]
+  );
   return assinatura ? refreshOverdueStatus(assinatura) : assinatura;
 }
 
@@ -55,7 +56,7 @@ export function getSubscriptionByResponsavel(responsavelId) {
 // voltar pra 'ativa' só acontece via pagamento de verdade
 // (renewSubscription, chamada pelo webhook). Atualiza o banco só quando o
 // status realmente muda (idempotente, seguro de chamar a cada request).
-export function refreshOverdueStatus(assinatura) {
+export async function refreshOverdueStatus(assinatura) {
   if (assinatura.status !== 'trial' && assinatura.status !== 'ativa' && assinatura.status !== 'atraso') {
     return assinatura; // 'bloqueada' é o fim da linha; só destrava com pagamento
   }
@@ -65,16 +66,16 @@ export function refreshOverdueStatus(assinatura) {
   else if (diasAtraso >= DIAS_PARA_ATRASO) novoStatus = 'atraso';
 
   if (novoStatus === assinatura.status) return assinatura;
-  db.prepare('UPDATE assinaturas SET status = ? WHERE id = ?').run(novoStatus, assinatura.id);
+  await dbRun('UPDATE assinaturas SET status = ? WHERE id = ?', [novoStatus, assinatura.id]);
   return { ...assinatura, status: novoStatus };
 }
 
 // Chamada pelo cron diário (server.js), além da checagem "sob demanda" já
 // feita em getSubscriptionByResponsavel — garante que o status fica em
 // dia mesmo pra quem não abrir o app naquele dia.
-export function refreshAllOverdueStatuses() {
-  const rows = db.prepare(`SELECT * FROM assinaturas WHERE status IN ('trial', 'ativa', 'atraso')`).all();
-  for (const row of rows) refreshOverdueStatus(row);
+export async function refreshAllOverdueStatuses() {
+  const rows = await dbAll("SELECT * FROM assinaturas WHERE status IN ('trial', 'ativa', 'atraso')");
+  for (const row of rows) await refreshOverdueStatus(row);
 }
 
 // Chamada quando um pagamento é confirmado (ver routes/subscription.js,
@@ -83,11 +84,12 @@ export function refreshAllOverdueStatuses() {
 // não deve "herdar" os dias já perdidos). Zera ultimo_lembrete_dias: o
 // vencimento mudou, então qualquer lembrete já mandado era sobre a data
 // antiga e não deve impedir um aviso novo mais pra frente.
-export function renewSubscription(assinaturaId, { vencimentoEm, ultimoPagamentoEm, infinitepayOrderNsu }) {
-  db.prepare(`
-    UPDATE assinaturas
-    SET status = 'ativa', vencimento_em = ?, ultimo_pagamento_em = ?,
-        infinitepay_order_nsu = ?, ultimo_lembrete_dias = NULL
-    WHERE id = ?
-  `).run(vencimentoEm, ultimoPagamentoEm, infinitepayOrderNsu, assinaturaId);
+export async function renewSubscription(assinaturaId, { vencimentoEm, ultimoPagamentoEm, infinitepayOrderNsu }) {
+  await dbRun(
+    `UPDATE assinaturas
+     SET status = 'ativa', vencimento_em = ?, ultimo_pagamento_em = ?,
+         infinitepay_order_nsu = ?, ultimo_lembrete_dias = NULL
+     WHERE id = ?`,
+    [vencimentoEm, ultimoPagamentoEm, infinitepayOrderNsu, assinaturaId]
+  );
 }

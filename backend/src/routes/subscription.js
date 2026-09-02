@@ -19,8 +19,8 @@ router.get('/config', (_req, res) => {
   res.json({ checkoutConfigured: isCheckoutConfigured() });
 });
 
-router.get('/status', requireAuth, (req, res) => {
-  const assinatura = getSubscriptionByResponsavel(req.responsavel.id);
+router.get('/status', requireAuth, async (req, res) => {
+  const assinatura = await getSubscriptionByResponsavel(req.responsavel.id);
   if (!assinatura) {
     return res.status(404).json({ error: 'Assinatura não encontrada.' });
   }
@@ -38,12 +38,12 @@ router.post('/checkout', requireAuth, async (req, res) => {
   if (!isCheckoutConfigured()) {
     return res.status(503).json({ error: 'Pagamento não configurado no servidor.' });
   }
-  const assinatura = getSubscriptionByResponsavel(req.responsavel.id);
+  const assinatura = await getSubscriptionByResponsavel(req.responsavel.id);
   if (!assinatura) {
     return res.status(404).json({ error: 'Assinatura não encontrada.' });
   }
 
-  const pagamento = createPendingPagamento(assinatura.id, assinatura.valor_centavos);
+  const pagamento = await createPendingPagamento(assinatura.id, assinatura.valor_centavos);
   // order_nsu carrega o id do próprio pagamento — assim o webhook acha a
   // linha certa sem precisar de uma coluna extra só pra esse mapeamento.
   const orderNsu = `teajudo-p${pagamento.id}`;
@@ -81,7 +81,7 @@ router.post('/webhook', async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
-  const pagamento = findPagamentoById(Number(match[1]));
+  const pagamento = await findPagamentoById(Number(match[1]));
   if (!pagamento || pagamento.status === 'pago') {
     return res.status(200).json({ ok: true });
   }
@@ -94,9 +94,9 @@ router.post('/webhook', async (req, res) => {
       return res.status(200).json({ ok: true });
     }
 
-    markPagamentoPago(pagamento.id, { transactionNsu: transaction_nsu, metodo: check.capture_method });
+    await markPagamentoPago(pagamento.id, { transactionNsu: transaction_nsu, metodo: check.capture_method });
     const agora = new Date();
-    renewSubscription(pagamento.assinatura_id, {
+    await renewSubscription(pagamento.assinatura_id, {
       vencimentoEm: toSqlDateTime(new Date(agora.getTime() + 30 * 86400000)),
       ultimoPagamentoEm: toSqlDateTime(agora),
       infinitepayOrderNsu: order_nsu,

@@ -2,10 +2,10 @@
 // fora deste arquivo por engano — sempre passe pelas funções "publicas"
 // (toPublic) antes de mandar algo pro frontend.
 
-import { db } from './db.js';
+import { dbGet, dbRun } from './db.js';
 
 // E-mail é sempre comparado normalizado (minúsculo, sem espaço nas
-// pontas) — SQLite compara TEXT por padrão de forma sensível a
+// pontas) — SQLite/libSQL compara TEXT por padrão de forma sensível a
 // maiúsculas/minúsculas, então sem isso "Nome@Gmail.com" no cadastro e
 // "nome@gmail.com" no login (ex: teclado do celular capitalizando a
 // primeira letra sozinho) nunca bateriam, mesmo com a senha certa.
@@ -16,23 +16,24 @@ export function normalizeEmail(email) {
   return String(email).trim().toLowerCase();
 }
 
-export function createResponsavel({ nome, email, senhaHash }) {
-  const info = db.prepare(`
-    INSERT INTO responsaveis (nome, email, senha_hash) VALUES (?, ?, ?)
-  `).run(nome, normalizeEmail(email), senhaHash);
+export async function createResponsavel({ nome, email, senhaHash }) {
+  const info = await dbRun(
+    'INSERT INTO responsaveis (nome, email, senha_hash) VALUES (?, ?, ?)',
+    [nome, normalizeEmail(email), senhaHash]
+  );
   return findById(info.lastInsertRowid);
 }
 
-export function findByEmail(email) {
-  return db.prepare('SELECT * FROM responsaveis WHERE email = ?').get(normalizeEmail(email));
+export async function findByEmail(email) {
+  return dbGet('SELECT * FROM responsaveis WHERE email = ?', [normalizeEmail(email)]);
 }
 
-export function findById(id) {
-  return db.prepare('SELECT * FROM responsaveis WHERE id = ?').get(id);
+export async function findById(id) {
+  return dbGet('SELECT * FROM responsaveis WHERE id = ?', [id]);
 }
 
-export function updateSenhaHash(id, senhaHash) {
-  db.prepare('UPDATE responsaveis SET senha_hash = ? WHERE id = ?').run(senhaHash, id);
+export async function updateSenhaHash(id, senhaHash) {
+  await dbRun('UPDATE responsaveis SET senha_hash = ? WHERE id = ?', [senhaHash, id]);
 }
 
 // Formato seguro pra devolver ao frontend — nunca inclui senha_hash.

@@ -7,20 +7,20 @@
 // renovação, ver subscription.js::renewSubscription), então o job é
 // seguro de rodar mais de uma vez no mesmo dia (ex: servidor reiniciou).
 
-import { db } from './db.js';
+import { dbAll, dbRun } from './db.js';
 import { diasRestantesAte } from './subscription.js';
 import { sendDueDateReminderEmail } from './mailer.js';
 
 const DIAS_PARA_AVISAR = [3, 2, 1];
 
 export async function checkDueDateReminders() {
-  const rows = db.prepare(`
+  const rows = await dbAll(`
     SELECT a.id, a.vencimento_em, a.ultimo_lembrete_dias,
            r.nome AS responsavel_nome, r.email AS responsavel_email
     FROM assinaturas a
     JOIN responsaveis r ON r.id = a.responsavel_id
     WHERE a.status IN ('trial', 'ativa')
-  `).all();
+  `);
 
   for (const row of rows) {
     const dias = diasRestantesAte(row.vencimento_em);
@@ -34,7 +34,7 @@ export async function checkDueDateReminders() {
     });
 
     if (result.sent) {
-      db.prepare('UPDATE assinaturas SET ultimo_lembrete_dias = ? WHERE id = ?').run(dias, row.id);
+      await dbRun('UPDATE assinaturas SET ultimo_lembrete_dias = ? WHERE id = ?', [dias, row.id]);
     } else {
       console.warn(`[lembrete de vencimento] não enviado (assinatura ${row.id}, ${dias} dia(s)): ${result.reason}`);
     }

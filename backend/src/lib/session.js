@@ -33,10 +33,12 @@ export function clearSessionCookie(res) {
 
 // Middleware: exige sessão válida, anexa o responsável (sem senha_hash não
 // filtrado ainda — quem usa req.responsavel deve passar por toPublic()
-// antes de devolver isso ao frontend) em req.responsavel.
-export function requireAuth(req, res, next) {
+// antes de devolver isso ao frontend) em req.responsavel. Async (Express 5
+// encaminha rejeições de middleware async pro tratamento de erro sozinho,
+// sem precisar de try/catch aqui).
+export async function requireAuth(req, res, next) {
   const id = req.signedCookies?.[SESSION_COOKIE_NAME];
-  const responsavel = id ? findById(Number(id)) : null;
+  const responsavel = id ? await findById(Number(id)) : null;
   if (!responsavel) {
     return res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
   }

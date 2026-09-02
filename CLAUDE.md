@@ -59,7 +59,7 @@ para checar se o backend está no ar).
 - Envio de e-mail via API HTTP da SendGrid (`fetch` nativo, sem SDK)
 - `dotenv` — variáveis de ambiente · `cors` — libera o frontend
 - `fetch` nativo do Node (sem `node-fetch`) para chamar o ElevenLabs
-- `better-sqlite3` — banco de dados (login e assinatura; ver seção
+- `@libsql/client` — banco de dados (login e assinatura; ver seção
   "Banco de dados" abaixo)
 - `bcrypt` — hash de senha · `cookie-parser` — cookie de sessão assinado
   (login dos responsáveis; ver seção "Login dos responsáveis" abaixo)
@@ -108,12 +108,14 @@ proxy). Configure `VITE_API_URL` no Vercel com qualquer texto que não
 comece com `http` (ex: `same-origin`).
 
 Variáveis obrigatórias no Render (backend), além das já documentadas em
-`.env.example`: `COOKIE_SECRET` (sem ela, o servidor recusa subir com
-`NODE_ENV=production`) e `BACKEND_PUBLIC_URL=https://teajudo.onrender.com`
-(pro webhook da InfinitePay funcionar). `CORS_ORIGIN` continua configurada
-pro domínio do Vercel, mas com o proxy ativo isso deixa de ser crítico
-(as chamadas passam a ser same-origin) — fica só como fallback pra quem
-acessar a API do Render direto.
+`.env.example`: `COOKIE_SECRET` e `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`
+(sem qualquer uma delas, o servidor recusa subir com `NODE_ENV=production`
+— ver seção "Banco de dados" abaixo) e
+`BACKEND_PUBLIC_URL=https://teajudo.onrender.com` (pro webhook da
+InfinitePay funcionar). `CORS_ORIGIN` continua configurada pro domínio do
+Vercel, mas com o proxy ativo isso deixa de ser crítico (as chamadas
+passam a ser same-origin) — fica só como fallback pra quem acessar a API
+do Render direto.
 
 ## Persistência (localStorage) — no frontend
 Todo o app passa pelas funções `loadJSON(key, fallback)` e
@@ -178,15 +180,34 @@ async function saveJSON(key, value) {
   configuração única do servidor, não por requisição)
 - `teajudo:daily-usage` — `{date, seconds}` para o limite de tempo de uso
 
-## Banco de dados (backend, SQLite)
+## Banco de dados (backend, Turso/libSQL)
 Fase 0 de um sistema de login + assinatura paga (em construção, fases
-documentadas à parte). Arquivo único `backend/data/teajudo.db`
-(`better-sqlite3`, síncrono), gitignored igual a `voice-config.json` —
-criado e migrado automaticamente (`CREATE TABLE IF NOT EXISTS`) toda vez
-que o servidor sobe, em `lib/db.js`. É a **única** fonte de verdade sobre
-conta e assinatura — o frontend nunca decide sozinho se o acesso está
-liberado (isso viria de uma flag no `localStorage`, fácil de burlar
-limpando o navegador).
+documentadas à parte). É a **única** fonte de verdade sobre conta e
+assinatura — o frontend nunca decide sozinho se o acesso está liberado
+(isso viria de uma flag no `localStorage`, fácil de burlar limpando o
+navegador).
+
+**Turso, não mais um arquivo SQLite local com `better-sqlite3`.** A
+troca aconteceu depois de um bug sério em produção: hospedagens grátis
+como o Render **não têm disco persistente** — o container é recriado do
+zero a cada deploy/reinício, e um arquivo local (mesmo dentro de
+`backend/data/`, gitignored) simplesmente sumia junto, apagando toda
+conta cadastrada sem aviso nenhum. Sintoma no ar: contas "esqueciam" a
+senha, ou dava pra recriar a mesma conta do zero (`POST /api/auth/register`
+nunca dava 409) depois de qualquer redeploy. `@libsql/client` fala com
+um banco remoto (Turso — free tier permanente, sem expiração, ao
+contrário do Postgres grátis do próprio Render que expira em 30 dias)
+usando o mesmo dialeto SQL do SQLite — as tabelas/queries abaixo não
+mudaram, só a forma de acessar (agora assíncrona: `lib/db.js` exporta
+`dbGet`/`dbAll`/`dbRun`, e todo o resto do backend usa essas três funções
+em vez de `db.prepare(...).get/.all/.run()`). Em dev local, sem
+`TURSO_DATABASE_URL` configurada, cai automaticamente num arquivo local
+(`backend/data/teajudo.db`, gitignored) — mesmo comportamento de antes,
+sem precisar de conta externa só pra rodar na sua máquina. **Em
+produção, `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` são obrigatórias — o
+servidor recusa subir sem elas com `NODE_ENV=production`** (mesmo
+espírito do `COOKIE_SECRET`), pra esse bug nunca mais acontecer em
+silêncio.
 
 Tudo o mais do app (botões, logs, resultados de jogos etc., listados
 acima) continua só no `localStorage` — não precisa de sincronia entre

@@ -53,9 +53,13 @@ app.listen(PORT, () => {
 // (hospedagens grátis derrubam o processo por inatividade). Ambas as
 // funções são seguras de rodar mais de uma vez no mesmo dia (ver
 // lib/reminders.js e lib/subscription.js::refreshOverdueStatus).
-function runDailyJobs() {
-  refreshAllOverdueStatuses();
-  checkDueDateReminders().catch((err) => console.error('[cron lembretes de vencimento]', err));
+async function runDailyJobs() {
+  try {
+    await refreshAllOverdueStatuses();
+    await checkDueDateReminders();
+  } catch (err) {
+    console.error('[cron lembretes de vencimento]', err);
+  }
 }
 cron.schedule('0 9 * * *', runDailyJobs);
 runDailyJobs();
