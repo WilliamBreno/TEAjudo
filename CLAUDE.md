@@ -636,14 +636,23 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   linhas) era mais curto que a viewport, sobrando uma faixa clara vazia
   embaixo e criando rolagem no desktop que não deveria existir. Todo
   `min-h-screen` do app (`TEAjudoApp`, `RegularizationScreen`) virou
-  **`min-h-dvh`** (`100dvh`, dynamic viewport height) em vez de `100vh` —
-  no celular, `100vh` conta a área atrás da barra de endereço do
-  navegador, que aparece/some ao tocar em qualquer botão; isso fazia a
-  altura "calculada" da página mudar sozinha a cada toque, e o navegador
-  reagia deslizando a própria barra de endereço por cima do conteúdo por
-  um instante (relatado como "a tela expande e volta"). `dvh` já
-  acompanha o tamanho real e visível da tela o tempo todo, sem esse
-  salto. Overlays de tela cheia que já usavam `fixed inset-0`
+  **`min-h-svh`** (`100svh`, small viewport height — o tamanho da tela
+  com a barra do navegador **já visível**) em vez de `100vh`. No
+  celular, `100vh` conta a área atrás da barra de endereço, que
+  aparece/some ao tocar em qualquer botão — isso fazia a altura
+  "calculada" da página mudar sozinha a cada toque, e o navegador reagia
+  deslizando a própria barra por cima do conteúdo por um instante
+  (relatado como "a tela quebra e volta"). A primeira tentativa foi
+  `min-h-dvh` (dynamic viewport height), mas `dvh` **por definição**
+  acompanha a barra em tempo real — ou seja, a página continuava
+  recalculando/re-fluindo toda vez que a barra escondia ou reaparecia, e
+  esse próprio recálculo é que causava o salto visual; só trocar `vh`
+  por `dvh` não removia a causa, só mudava o gatilho. `svh` resolve de
+  verdade: fica travado no tamanho pequeno (barra visível) o tempo todo,
+  então a página nunca cresce quando a barra some sozinha e não há mais
+  nada disparando reflow por causa disso — sobra um pouco de espaço
+  embaixo quando a barra está escondida, troca aceitável por não ter
+  nenhum salto. Overlays de tela cheia que já usavam `fixed inset-0`
   (`WelcomeScreen`, `BreakOverlay`) não tinham esse problema — `inset-0`
   não depende de unidade de viewport. Na mesma leva, o aviso de
   `voiceNotice` (voz personalizada indisponível) deixou de empurrar a
