@@ -295,6 +295,16 @@ protege `GET /api/auth/me` e vai proteger as rotas de assinatura das
 próximas fases. `lib/responsaveis.js::toPublic()` sempre tira o
 `senha_hash` antes de qualquer resposta chegar no frontend.
 
+E-mail é sempre normalizado (`lib/responsaveis.js::normalizeEmail` —
+minúsculo, sem espaço nas pontas) antes de gravar ou buscar no banco, e
+o mesmo vale pros códigos de verificação (`codeStore.js`, mesma
+normalização). Sem isso, cadastro e login com grafias diferentes do
+mesmo e-mail (ex: teclado do celular capitalizando a primeira letra
+sozinho, comum em `type="email"` em alguns navegadores) nunca bateriam —
+SQLite compara TEXT por padrão de forma sensível a maiúsculas/minúsculas.
+`db.js` também roda uma correção de dados no boot pra normalizar contas
+já cadastradas antes dessa mudança existir.
+
 Cadastro (`POST /api/auth/register`) já cria a assinatura trial
 (`createTrialSubscription`, ver seção "Banco de dados" acima) e loga
 automaticamente — não tem passo de confirmar e-mail antes de poder usar

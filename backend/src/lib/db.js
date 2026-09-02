@@ -93,3 +93,26 @@ const assinaturasCols = db.prepare("PRAGMA table_info(assinaturas)").all().map((
 if (!assinaturasCols.includes('ultimo_lembrete_dias')) {
   db.exec('ALTER TABLE assinaturas ADD COLUMN ultimo_lembrete_dias INTEGER');
 }
+
+// Correção de dados (não schema): contas criadas antes do e-mail passar
+// a ser normalizado (minúsculo, sem espaço nas pontas — ver
+// lib/responsaveis.js::normalizeEmail) podem ter ficado com e-mail
+// "Fulano@Gmail.com" em vez de "fulano@gmail.com". Sem essa correção,
+// login/recuperação de senha continuariam falhando pra quem já tinha
+// conta, mesmo digitando a senha certa (SQLite compara TEXT por padrão
+// de forma sensível a maiúsculas/minúsculas). Roda toda vez que o
+// servidor sobe, mas só grava quando realmente muda algo — inofensivo
+// de rodar de novo. Import inline (não de responsaveis.js) pra evitar
+// import circular, já que responsaveis.js importa `db` deste arquivo.
+const contasDesnormalizadas = db.prepare('SELECT id, email FROM responsaveis').all();
+for (const { id, email } of contasDesnormalizadas) {
+  const normalizado = String(email).trim().toLowerCase();
+  if (normalizado === email) continue;
+  try {
+    db.prepare('UPDATE responsaveis SET email = ? WHERE id = ?').run(normalizado, id);
+  } catch (e) {
+    // Só falha se já existir outra conta com o e-mail normalizado (uma
+    // colisão rara) — loga e segue, não trava o boot do servidor por isso.
+    console.error(`[migração e-mail] não foi possível normalizar o e-mail do responsável ${id}:`, e.message);
+  }
+}

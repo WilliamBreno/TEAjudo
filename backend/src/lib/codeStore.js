@@ -8,13 +8,17 @@
 // prazo de 10 minutos.
 
 import { db } from './db.js';
+import { normalizeEmail } from './responsaveis.js';
 
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutos
 const RESEND_COOLDOWN_MS = 30 * 1000; // 30s entre reenvios pro mesmo e-mail
 const MAX_ATTEMPTS = 5;
 
+// Mesma normalização de e-mail usada em responsaveis.js — pedir o código
+// como "Nome@Gmail.com" e conferir como "nome@gmail.com" (ou vice-versa)
+// não pode fazer o código "sumir" por diferença de maiúscula/minúscula.
 export function canSend(email) {
-  const entry = db.prepare('SELECT last_sent_at FROM codigos_verificacao WHERE email = ?').get(email);
+  const entry = db.prepare('SELECT last_sent_at FROM codigos_verificacao WHERE email = ?').get(normalizeEmail(email));
   if (!entry) return true;
   return Date.now() - entry.last_sent_at > RESEND_COOLDOWN_MS;
 }
@@ -25,30 +29,31 @@ export function saveCode(email, code) {
     VALUES (@email, @code, @expiresAt, 0, @now)
     ON CONFLICT(email) DO UPDATE SET
       code = @code, expires_at = @expiresAt, attempts = 0, last_sent_at = @now
-  `).run({ email, code, expiresAt: Date.now() + CODE_TTL_MS, now: Date.now() });
+  `).run({ email: normalizeEmail(email), code, expiresAt: Date.now() + CODE_TTL_MS, now: Date.now() });
 }
 
 export function verifyCode(email, code) {
-  const entry = db.prepare('SELECT * FROM codigos_verificacao WHERE email = ?').get(email);
+  const normalized = normalizeEmail(email);
+  const entry = db.prepare('SELECT * FROM codigos_verificacao WHERE email = ?').get(normalized);
   if (!entry) return { valid: false, reason: 'not_found' };
 
   if (Date.now() > entry.expires_at) {
-    db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(email);
+    db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(normalized);
     return { valid: false, reason: 'expired' };
   }
 
   const attempts = entry.attempts + 1;
   if (attempts > MAX_ATTEMPTS) {
-    db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(email);
+    db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(normalized);
     return { valid: false, reason: 'too_many_attempts' };
   }
 
   if (entry.code !== code) {
-    db.prepare('UPDATE codigos_verificacao SET attempts = ? WHERE email = ?').run(attempts, email);
+    db.prepare('UPDATE codigos_verificacao SET attempts = ? WHERE email = ?').run(attempts, normalized);
     return { valid: false, reason: 'mismatch' };
   }
 
-  db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(email); // uso único
+  db.prepare('DELETE FROM codigos_verificacao WHERE email = ?').run(normalized); // uso único
   return { valid: true };
 }
 

@@ -1133,6 +1133,8 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
               onChange={(e) => setForgotEmail(e.target.value)}
               type="email"
               placeholder="email@exemplo.com"
+              autoCapitalize="none"
+              autoCorrect="off"
               className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
             />
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
@@ -1222,6 +1224,8 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
           onChange={(e) => setEmail(e.target.value)}
           type="email"
           placeholder="email@exemplo.com"
+          autoCapitalize="none"
+          autoCorrect="off"
           className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
           autoComplete="email"
         />
@@ -2353,6 +2357,8 @@ function SecuritySetup({ settings, mode, onComplete, onCancel }) {
             onChange={(e) => setEmail(e.target.value)}
             type="email"
             placeholder="email@exemplo.com"
+            autoCapitalize="none"
+            autoCorrect="off"
             className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
           />
           {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
