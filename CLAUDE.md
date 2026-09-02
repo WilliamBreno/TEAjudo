@@ -573,8 +573,15 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   na "Fitzgerald Key" usada em pranchas de CAA reais. Cada botão também
   aceita cor individual customizada — a cor da categoria é só a sugestão
   inicial. As cores são **sólidas/vívidas** (não pastel) — o fundo do botão
-  é a própria cor, com contraste de texto calculado automaticamente
-  (`getContrastText`) para continuar legível mesmo em cores claras.
+  é a própria cor (degradê claro→vívido, não plano, pra dar brilho), com
+  **borda neon** (versão bem clareada da mesma cor + glow em camadas via
+  `box-shadow`) nos dois estilos visuais (`getButtonCardStyle`, "Tátil" e
+  "Nítido" — decisão explícita do usuário: o "Nítido" tinha regredido pra
+  fundo branco com só um acento colorido numa passada visual anterior,
+  contrariando esse princípio, e foi corrigido). Contraste de texto
+  calculado automaticamente (`getContrastText`) nos dois estilos, texto em
+  `font-extrabold` com leve `text-shadow` pra mais ênfase (não mudou de
+  tamanho).
 - **Ícone OU foto, nunca os dois ao mesmo tempo** — o formulário de novo
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre

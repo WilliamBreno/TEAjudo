@@ -466,25 +466,30 @@ function getConfettiPieces(color) {
 // cada um dos 2 estilos — a cor em si (categoria/Fitzgerald Key) não muda.
 function getButtonCardStyle(buttonStyle, color) {
   if (buttonStyle === 'nitido') {
+    // Fundo é a própria cor (vívida, não pastel — ver "Decisões de
+    // design" no CLAUDE.md), num degradê claro→vívido pra dar brilho, com
+    // borda neon (cor bem clareada) e glow em camadas (anel fino + duas
+    // camadas de sombra colorida) simulando o efeito de tubo de neon.
     return {
       borderRadius: '18px',
-      backgroundColor: '#fff',
-      border: '1px solid #E7E5E4',
-      boxShadow: `0 6px 16px ${hexToRgba(color, 0.16)}, 0 1px 2px rgba(0,0,0,0.05)`,
+      backgroundImage: `linear-gradient(150deg, ${lightenColor(color, 0.3)} 0%, ${color} 55%, ${shadeColor(color, 0.05)} 100%)`,
+      border: `2px solid ${lightenColor(color, 0.4)}`,
+      boxShadow: `0 0 0 1px ${hexToRgba(color, 0.45)}, 0 0 10px ${hexToRgba(color, 0.6)}, 0 0 22px ${hexToRgba(color, 0.4)}, 0 6px 14px rgba(0,0,0,0.12)`,
       // Consumidos por [data-style="nitido"]:hover/:focus-visible acima.
       '--tea-color': color,
-      '--tea-glow': hexToRgba(color, 0.35),
+      '--tea-glow': hexToRgba(color, 0.5),
     };
   }
   // tatil — neumórfico: sombra escura embaixo/direita + luz em cima/esquerda
-  // + glow colorido. `--tea-color` é consumido pelas regras
+  // + borda neon (clareada, não escurecida — mais brilho) + glow em
+  // camadas. `--tea-color` é consumido pelas regras
   // `[data-style="tatil"]:active/:focus-visible` em GLOBAL_STYLES (inline
   // style não suporta pseudo-classe).
   return {
     borderRadius: '26px',
-    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.22)} 0%, ${color} 55%, ${shadeColor(color, 0.16)} 100%)`,
-    border: `3px solid ${shadeColor(color, 0.22)}`,
-    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 22px ${hexToRgba(color, 0.35)}`,
+    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.28)} 0%, ${color} 55%, ${shadeColor(color, 0.1)} 100%)`,
+    border: `3px solid ${lightenColor(color, 0.4)}`,
+    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 12px ${hexToRgba(color, 0.65)}, 0 0 26px ${hexToRgba(color, 0.4)}`,
     '--tea-color': color,
   };
 }
@@ -1543,7 +1548,10 @@ function ChildPanel({
           // sempre presente — só a animação para com reduceMotion (manual
           // ou do SO), sem sumir (ver GLOBAL_STYLES).
           const animateIdle = !effectiveReduceMotion;
-          const textColor = buttonStyle === 'nitido' ? '#292524' : getContrastText(color);
+          // Contraste calculado nos dois estilos agora — o "nítido" deixou
+          // de ter fundo branco fixo (virou a própria cor, vívida), então
+          // precisa da mesma lógica dinâmica que o "tátil" já usava.
+          const textColor = getContrastText(color);
           // Flutuar/wiggle do ícone vivem só no badge circular (abaixo), nos
           // dois estilos — nunca no <img>/emoji cru. Durante o toque
           // (showEffects) o wiggle tem prioridade sobre o flutuar contínuo;
@@ -1555,11 +1563,11 @@ function ChildPanel({
             : b.iconVariant === 'minimal'
               ? <CategoryIcon size={21} strokeWidth={2.25} />
               : <span className="text-2xl">{b.emoji}</span>;
-          // No tátil o fundo do próprio cartão já É a cor da categoria — a
-          // fagulha usa getContrastText (mesma lógica do label) pra não
-          // ficar quase invisível sobre um fundo da própria cor. No nítido
-          // o cartão é branco e a cor crua já lê bem, então mantém.
-          const sparkColor = buttonStyle === 'tatil' ? textColor : color;
+          // Os dois estilos têm o fundo do cartão na própria cor da
+          // categoria agora — a fagulha usa getContrastText (mesma lógica
+          // do label) pra não ficar quase invisível sobre um fundo da
+          // própria cor.
+          const sparkColor = textColor;
 
           const hasEntered = enteredIds.has(b.id);
           return (
@@ -1580,10 +1588,6 @@ function ChildPanel({
                 className={`tea-orb-halo${animateIdle ? ' tea-orb-halo-anim' : ''}`}
                 style={{ backgroundImage: `radial-gradient(circle, ${color}, transparent 70%)` }}
               />
-
-              {buttonStyle === 'nitido' && (
-                <span className="absolute top-0 left-3.5 right-3.5 h-[3px] rounded-[2px] z-[1]" style={{ backgroundColor: color }} />
-              )}
 
               {isPlaying && (
                 effectiveReduceMotion ? (
@@ -1606,17 +1610,14 @@ function ChildPanel({
 
               <div
                 className={`w-[46px] h-[46px] rounded-full flex items-center justify-center relative z-[1]${badgeMotionClass}`}
-                style={buttonStyle === 'nitido'
-                  ? {
-                    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.15)}, ${shadeColor(color, 0.1)})`,
-                    color: '#fff',
-                    boxShadow: `0 3px 8px ${hexToRgba(color, 0.35)}`,
-                  }
-                  : { backgroundColor: 'rgba(255,255,255,0.35)', color: textColor }}
+                style={{ backgroundColor: 'rgba(255,255,255,0.38)', color: textColor, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)' }}
               >
                 {media}
               </div>
-              <span className="relative z-[1] text-sm font-bold text-center px-1" style={{ color: textColor }}>
+              <span
+                className="relative z-[1] text-sm font-extrabold tracking-wide text-center px-1"
+                style={{ color: textColor, textShadow: `0 1px 3px ${hexToRgba(shadeColor(color, 0.55), 0.5)}` }}
+              >
                 {b.label}
               </span>
 
