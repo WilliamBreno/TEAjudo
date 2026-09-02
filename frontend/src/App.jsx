@@ -1267,9 +1267,11 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
 function WelcomeScreen({ childName, onFinish }) {
   const [closing, setClosing] = useState(false);
   const [videoEnded, setVideoEnded] = useState(false);
+  const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [audioEnded, setAudioEnded] = useState(false);
   const [audioUnavailable, setAudioUnavailable] = useState(false);
   const finishedRef = useRef(false);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1291,6 +1293,23 @@ function WelcomeScreen({ childName, onFinish }) {
     return () => { cancelled = true; };
   }, [childName]);
 
+  // Navegadores mobile (Safari no iPhone principalmente) têm políticas de
+  // autoplay bem mais restritas — mesmo com muted+playsInline, o
+  // autoplay pode falhar de verdade (ex: modo de baixo consumo, economia
+  // de dados). O atributo `autoPlay` sozinho falha em silêncio; chamar
+  // `.play()" manualmente devolve uma Promise que dá pra capturar o erro.
+  // Sem isso, um autoplay bloqueado nunca dispara `onEnded` e a tela
+  // ficava travada pra sempre esperando um vídeo que nunca chegou a
+  // começar.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => setVideoUnavailable(true));
+    }
+  }, []);
+
   const finish = useCallback(() => {
     if (finishedRef.current) return;
     finishedRef.current = true;
@@ -1303,11 +1322,19 @@ function WelcomeScreen({ childName, onFinish }) {
   // nativo do <video> sem loop), então não precisa pausar manualmente.
   useEffect(() => {
     if (finishedRef.current) return;
-    if (videoEnded && (audioEnded || audioUnavailable)) {
+    if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable)) {
       const t = setTimeout(finish, 800);
       return () => clearTimeout(t);
     }
-  }, [videoEnded, audioEnded, audioUnavailable, finish]);
+  }, [videoEnded, videoUnavailable, audioEnded, audioUnavailable, finish]);
+
+  // Rede de segurança: nunca deixa a tela travada indefinidamente, mesmo
+  // se algum evento de vídeo/áudio falhar de um jeito que os efeitos
+  // acima não previram — sempre libera o ChildPanel depois de um tempo.
+  useEffect(() => {
+    const t = setTimeout(finish, 15000);
+    return () => clearTimeout(t);
+  }, [finish]);
 
   return (
     <div
@@ -1317,11 +1344,13 @@ function WelcomeScreen({ childName, onFinish }) {
         Pular
       </button>
       <video
+        ref={videoRef}
         src="/tuti/tuti-intro.mp4"
         muted
         playsInline
         autoPlay
         onEnded={() => setVideoEnded(true)}
+        onError={() => setVideoUnavailable(true)}
         className="w-full max-w-xs rounded-3xl shadow-sm"
       />
       {/* Nome por extenso em HTML (não a imagem de Logo.png, que agora é
