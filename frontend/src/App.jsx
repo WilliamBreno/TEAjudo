@@ -624,21 +624,38 @@ function fallbackSpeak(text, onEnd) {
   }
 }
 
-function playAudioBase64(base64, onEnd) {
+// Sobe esse número sempre que a voz configurada no backend mudar (voz
+// clonada nova, ELEVENLABS_VOICE_ID trocado etc.) — o cache de áudio é
+// só por texto, então trocar a voz no servidor sem isso deixaria todo
+// mundo continuar ouvindo o áudio antigo (já sintetizado, salvo no
+// localStorage) pra sempre, mesmo com o texto idêntico.
+const AUDIO_CACHE_VERSION = 2;
+
+// `onBlocked` (opcional) é chamado quando o navegador recusa autoplay
+// (comum pra áudio não-mudo disparado fora de um clique direto — ex:
+// depois de um fetch assíncrono, como na WelcomeScreen/TutiBubble) —
+// sem isso, o áudio falha em silêncio e quem chamou nunca sabe que a
+// pessoa não ouviu nada. Botões (clique direto do usuário) não passam
+// `onBlocked`, então mantêm o comportamento de sempre (cai pra onEnd).
+function playAudioBase64(base64, onEnd, onBlocked) {
   const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
   if (onEnd) { audio.onended = onEnd; audio.onerror = onEnd; }
-  audio.play().catch(() => { if (onEnd) onEnd(); });
+  audio.play().catch(() => {
+    if (onBlocked) onBlocked(audio);
+    else if (onEnd) onEnd();
+  });
+  return audio;
 }
 
 // Mesmo cache de áudio dos botões (`teajudo:audio-cache`, {[key]: {text,
-// audioBase64}}), só que endereçado por uma chave própria em vez do id do
-// botão — usado pelo Tuti (WelcomeScreen, TutiBubble), que não tem um
+// v, audioBase64}}), só que endereçado por uma chave própria em vez do id
+// do botão — usado pelo Tuti (WelcomeScreen, TutiBubble), que não tem um
 // "botão" por trás. Lança erro se o backend não estiver configurado/no
 // ar; quem chama decide o fallback (ex: seguir sem áudio).
 async function getOrSynthesizeAudio(key, text) {
   const cache = await loadJSON('teajudo:audio-cache', {});
   const cached = cache[key];
-  if (cached && cached.text === text) return cached.audioBase64;
+  if (cached && cached.text === text && cached.v === AUDIO_CACHE_VERSION) return cached.audioBase64;
 
   const resp = await fetch(`${API_URL}/api/tts`, {
     method: 'POST',
@@ -647,7 +664,7 @@ async function getOrSynthesizeAudio(key, text) {
   });
   if (!resp.ok) throw new Error('status ' + resp.status);
   const { audioBase64 } = await resp.json();
-  await saveJSON('teajudo:audio-cache', { ...cache, [key]: { text, audioBase64 } });
+  await saveJSON('teajudo:audio-cache', { ...cache, [key]: { text, v: AUDIO_CACHE_VERSION, audioBase64 } });
   return audioBase64;
 }
 
@@ -848,7 +865,7 @@ export default function TEAjudoApp() {
 
     if (voiceEnabled) {
       const cached = audioCache[button.id];
-      if (cached && cached.text === button.phrase) {
+      if (cached && cached.text === button.phrase && cached.v === AUDIO_CACHE_VERSION) {
         playAudioBase64(cached.audioBase64, finish);
         return;
       }
@@ -862,7 +879,7 @@ export default function TEAjudoApp() {
         const { audioBase64 } = await resp.json();
         playAudioBase64(audioBase64, finish);
         setAudioCache((prev) => {
-          const next = { ...prev, [button.id]: { text: button.phrase, audioBase64 } };
+          const next = { ...prev, [button.id]: { text: button.phrase, v: AUDIO_CACHE_VERSION, audioBase64 } };
           saveJSON('teajudo:audio-cache', next);
           return next;
         });
@@ -1284,8 +1301,16 @@ function WelcomeScreen({ childName, onFinish }) {
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [audioEnded, setAudioEnded] = useState(false);
   const [audioUnavailable, setAudioUnavailable] = useState(false);
+  // Autoplay de ÁUDIO (não-mudo) é bloqueado pelo navegador com muito mais
+  // frequência que o de vídeo mudo — principalmente porque esse play()
+  // acontece depois de um `await` (buscar/sintetizar o áudio), fora da
+  // janela de "gesto do usuário" que os navegadores exigem. Sem
+  // detectar isso, o áudio falhava em silêncio e a pessoa nunca ouvia o
+  // Tuti falar, mesmo com tudo funcionando do lado do servidor.
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const finishedRef = useRef(false);
   const videoRef = useRef(null);
+  const audioElRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1296,7 +1321,11 @@ function WelcomeScreen({ childName, onFinish }) {
           `Olá, sou o Tuti, assistente virtual de ${childName}!`
         );
         if (cancelled) return;
-        playAudioBase64(audioBase64, () => { if (!cancelled) setAudioEnded(true); });
+        audioElRef.current = playAudioBase64(
+          audioBase64,
+          () => { if (!cancelled) setAudioEnded(true); },
+          () => { if (!cancelled) setAudioBlocked(true); }
+        );
       } catch (e) {
         // Sem voz disponível (backend fora do ar/não configurado) — a tela
         // continua funcionando só com o vídeo, sem travar esperando um
@@ -1306,6 +1335,12 @@ function WelcomeScreen({ childName, onFinish }) {
     })();
     return () => { cancelled = true; };
   }, [childName]);
+
+  function handleTapToPlayAudio() {
+    const audio = audioElRef.current;
+    if (!audio) return;
+    audio.play().then(() => setAudioBlocked(false)).catch(() => {});
+  }
 
   // Navegadores mobile (Safari no iPhone principalmente) têm políticas de
   // autoplay bem mais restritas — mesmo com muted+playsInline, o
@@ -1336,11 +1371,11 @@ function WelcomeScreen({ childName, onFinish }) {
   // nativo do <video> sem loop), então não precisa pausar manualmente.
   useEffect(() => {
     if (finishedRef.current) return;
-    if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable)) {
+    if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable || audioBlocked)) {
       const t = setTimeout(finish, 800);
       return () => clearTimeout(t);
     }
-  }, [videoEnded, videoUnavailable, audioEnded, audioUnavailable, finish]);
+  }, [videoEnded, videoUnavailable, audioEnded, audioUnavailable, audioBlocked, finish]);
 
   // Rede de segurança: nunca deixa a tela travada indefinidamente, mesmo
   // se algum evento de vídeo/áudio falhar de um jeito que os efeitos
@@ -1377,6 +1412,14 @@ function WelcomeScreen({ childName, onFinish }) {
         <span style={{ color: CATEGORY_META.acoes.color }}>A</span>
         <span style={{ color: CATEGORY_META.acoes.color }}>judo</span>
       </div>
+      {audioBlocked && (
+        <button
+          onClick={handleTapToPlayAudio}
+          className="tea-popin flex items-center gap-2 bg-[#2F6F62] text-white rounded-xl px-4 py-2 font-semibold text-sm transition-transform active:scale-95"
+        >
+          <Volume2 size={16} /> Tocar a voz do Tuti
+        </button>
+      )}
     </div>
   );
 }
@@ -1704,6 +1747,12 @@ function ChildPanel({
 function TutiBubble({ phrase, tabKey }) {
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
+  // Mesmo problema da WelcomeScreen: autoplay de áudio não-mudo disparado
+  // depois de um `await` pode ser bloqueado pelo navegador — sem detectar,
+  // a bolha aparecia e fechava sozinha em silêncio, sem a pessoa nunca
+  // ouvir a frase.
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const audioElRef = useRef(null);
 
   const close = useCallback(() => {
     setClosing(true);
@@ -1727,7 +1776,11 @@ function TutiBubble({ phrase, tabKey }) {
       try {
         const audioBase64 = await getOrSynthesizeAudio(`tuti-bubble:${tabKey}`, phrase);
         if (cancelled) return;
-        playAudioBase64(audioBase64, () => { closeTimer = setTimeout(close, 4000); });
+        audioElRef.current = playAudioBase64(
+          audioBase64,
+          () => { closeTimer = setTimeout(close, 4000); },
+          () => { if (!cancelled) { setAudioBlocked(true); closeTimer = setTimeout(close, 6000); } }
+        );
       } catch (e) {
         if (!cancelled) closeTimer = setTimeout(close, 4000);
       }
@@ -1736,6 +1789,13 @@ function TutiBubble({ phrase, tabKey }) {
     return () => { cancelled = true; clearTimeout(closeTimer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleTapToPlayAudio(e) {
+    e.stopPropagation();
+    const audio = audioElRef.current;
+    if (!audio) return;
+    audio.play().then(() => setAudioBlocked(false)).catch(() => {});
+  }
 
   if (!visible) return null;
 
@@ -1746,6 +1806,11 @@ function TutiBubble({ phrase, tabKey }) {
           <X size={12} />
         </button>
         {phrase}
+        {audioBlocked && (
+          <button onClick={handleTapToPlayAudio} aria-label="Tocar áudio" className="ml-1.5 inline-flex align-middle text-[#2F6F62]">
+            <Volume2 size={14} />
+          </button>
+        )}
         <div className="absolute -bottom-1.5 right-8 w-3 h-3 bg-white border-r border-b border-[#EADFCB] rotate-45" />
       </div>
       <img

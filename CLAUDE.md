@@ -182,9 +182,14 @@ async function saveJSON(key, value) {
   (`BUILTIN_PUZZLE_SUBJECTS`, fotos reais em `frontend/public/game-subjects/`
   — ver seção "Mascote Tuti" abaixo) via `allSubjects` — usadas tanto no
   quebra-cabeça quanto no jogo da memória
-- `teajudo:audio-cache` — cache de áudio da voz clonada:
-  `{[buttonId]: {text, audioBase64}}` (sem `voiceId` — a voz agora é uma
-  configuração única do servidor, não por requisição)
+- `teajudo:audio-cache` — cache de áudio da voz: `{[buttonId ou chave do
+  Tuti]: {text, v, audioBase64}}` (sem `voiceId` — a voz é uma
+  configuração única do servidor, não por requisição). `v` é
+  `AUDIO_CACHE_VERSION` (constante em `App.jsx`) — sobe sempre que a voz
+  configurada no backend mudar (voz clonada nova, `ELEVENLABS_VOICE_ID`
+  trocado etc.); sem isso o cache (que só compara `text`) faria todo
+  mundo continuar ouvindo o áudio antigo pra sempre, mesmo com o texto
+  idêntico e a voz do servidor já trocada
 - `teajudo:daily-usage` — `{date, seconds}` para o limite de tempo de uso
 
 ## Banco de dados (backend, Turso/libSQL)
@@ -537,8 +542,13 @@ não a cor da marca). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
 depois do que terminar por último entre vídeo e áudio (o vídeo já para
 no último frame sozinho, comportamento nativo do `<video>` sem `loop`);
 se a síntese de voz falhar (backend fora do ar/não configurado), a tela
-não trava esperando um áudio que nunca chega — segue só com o vídeo.
-Tem um botão "Pular" sempre visível.
+não trava esperando um áudio que nunca chega — segue só com o vídeo. Se o
+navegador bloquear o autoplay do áudio (comum: o `play()` acontece depois
+de um `await`, fora da janela de "gesto do usuário" — bem mais frequente
+em mobile), mostra um botão "Tocar a voz do Tuti" pra iniciar manualmente
+em vez de falhar em silêncio (`playAudioBase64` aceita um callback
+`onBlocked` à parte do `onEnd` justamente pra isso). Tem um botão "Pular"
+sempre visível.
 
 `TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
 arquitetado pra qualquer aba que não seja o `ChildPanel`, hoje só usado
