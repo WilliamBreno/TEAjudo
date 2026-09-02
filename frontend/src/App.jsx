@@ -472,9 +472,9 @@ function getButtonCardStyle(buttonStyle, color) {
     // camadas de sombra colorida) simulando o efeito de tubo de neon.
     return {
       borderRadius: '18px',
-      backgroundImage: `linear-gradient(150deg, ${lightenColor(color, 0.3)} 0%, ${color} 55%, ${shadeColor(color, 0.05)} 100%)`,
-      border: `2px solid ${lightenColor(color, 0.4)}`,
-      boxShadow: `0 0 0 1px ${hexToRgba(color, 0.45)}, 0 0 10px ${hexToRgba(color, 0.6)}, 0 0 22px ${hexToRgba(color, 0.4)}, 0 6px 14px rgba(0,0,0,0.12)`,
+      backgroundImage: `linear-gradient(160deg, ${lightenColor(color, 0.45)} 0%, ${color} 45%, ${shadeColor(color, 0.22)} 100%)`,
+      border: `3px solid ${lightenColor(color, 0.45)}`,
+      boxShadow: `0 0 0 1px ${hexToRgba(color, 0.5)}, 0 0 12px ${hexToRgba(color, 0.7)}, 0 0 26px ${hexToRgba(color, 0.45)}, 0 8px 16px rgba(0,0,0,0.16)`,
       // Consumidos por [data-style="nitido"]:hover/:focus-visible acima.
       '--tea-color': color,
       '--tea-glow': hexToRgba(color, 0.5),
@@ -487,9 +487,9 @@ function getButtonCardStyle(buttonStyle, color) {
   // style não suporta pseudo-classe).
   return {
     borderRadius: '26px',
-    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.28)} 0%, ${color} 55%, ${shadeColor(color, 0.1)} 100%)`,
-    border: `3px solid ${lightenColor(color, 0.4)}`,
-    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 12px ${hexToRgba(color, 0.65)}, 0 0 26px ${hexToRgba(color, 0.4)}`,
+    backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.4)} 0%, ${color} 45%, ${shadeColor(color, 0.25)} 100%)`,
+    border: `3px solid ${lightenColor(color, 0.45)}`,
+    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 14px ${hexToRgba(color, 0.75)}, 0 0 30px ${hexToRgba(color, 0.45)}`,
     '--tea-color': color,
   };
 }
@@ -1584,6 +1584,14 @@ function ChildPanel({
                 if (e.animationName === 'teaPopIn' && e.target === e.currentTarget) markEntered(b.id);
               }}
             >
+              {/* Reflexo de vidro/gloss fixo no topo do botão — o brilho
+                  "3D" da referência do usuário, sem precisar de animação
+                  contínua (só decorativo, sempre no mesmo lugar). */}
+              <span
+                className="absolute inset-0 rounded-[inherit] pointer-events-none"
+                style={{ backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.12) 38%, rgba(255,255,255,0) 60%)' }}
+                aria-hidden="true"
+              />
               <span
                 className={`tea-orb-halo${animateIdle ? ' tea-orb-halo-anim' : ''}`}
                 style={{ backgroundImage: `radial-gradient(circle, ${color}, transparent 70%)` }}

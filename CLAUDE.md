@@ -624,9 +624,13 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   regressiva alarmante.
 - **Motion.dev / Magic UI / React Bits não estavam disponíveis** no
   ambiente de artifact original — os efeitos (`tea-popin`, `tea-fadein`,
-  `tea-pulse-ring`, `tea-shimmer-btn`, confete) foram recriados em CSS puro
-  dentro de `GLOBAL_STYLES`. Fora do Claude.ai dá pra trocar por essas
-  bibliotecas de verdade (`npm install motion`) se preferir.
+  `tea-pulse-ring`, `tea-shimmer-btn`, confete, o gloss/reflexo estático
+  dos botões) foram recriados em CSS puro dentro de `GLOBAL_STYLES`.
+  `motion` (`frontend/package.json`) já está instalado desde que o
+  projeto saiu do ambiente de artifact — ainda não foi usado em nenhum
+  componente (os efeitos atuais continuam em CSS puro, já testados e
+  funcionando), mas está disponível pra quem quiser trocar por uma
+  animação de verdade da biblioteca no lugar de alguma dessas classes.
 - **Arraste do quebra-cabeça usa Pointer Events**, não a Drag and Drop API
   nativa do HTML5 (que tem suporte ruim em touch). Mantém também o modo
   toque-toque como alternativa motora.
