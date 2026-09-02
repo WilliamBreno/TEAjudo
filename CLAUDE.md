@@ -167,7 +167,17 @@ async function saveJSON(key, value) {
   padrão também, em vez de exigir que o pai ligasse manualmente nas
   Configurações; continua com fallback automático pra voz do aparelho se
   o backend estiver fora do ar/sem `ELEVENLABS_API_KEY` configurada — ver
-  `playPhrase`). `childName` (nome da criança, usado nas frases do Tuti —
+  `playPhrase`). Contas criadas **antes** dessa mudança de padrão já
+  tinham `voiceEnabled: false` salvo de verdade no `localStorage` — e um
+  valor salvo sempre vence o `DEFAULT_SETTINGS` no merge
+  (`{...DEFAULT_SETTINGS, ...s}`), então essas contas continuavam presas
+  na voz do aparelho nos botões (mesmo a `WelcomeScreen`/`TutiBubble` já
+  tocando a voz nova, já que elas nunca checaram `voiceEnabled`). Corrigido
+  com uma migração única no boot: se a flag `teajudo:voice-default-migrated`
+  não existir ainda no `localStorage`, força `voiceEnabled: true` uma vez,
+  salva os settings e grava a flag — mesmo padrão de versionamento do
+  `AUDIO_CACHE_VERSION`, só que de leitura única em vez de comparado a
+  cada reprodução. `childName` (nome da criança, usado nas frases do Tuti —
   ver seção "Mascote Tuti" abaixo) é capturado no formulário de cadastro
   (`AuthGate`) e só existe localmente — não é dado de conta, não vai pro
   backend, não sincroniza entre dispositivos
@@ -604,7 +614,17 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   anterior, contrariando o princípio original de "fundo é a própria cor",
   e foi corrigido). Contraste de texto calculado automaticamente
   (`getContrastText`) nos dois estilos, texto em `font-extrabold` com
-  leve `text-shadow` pra mais ênfase (não mudou de tamanho).
+  leve `text-shadow` pra mais ênfase (não mudou de tamanho). Fundo geral
+  atrás dos botões (não o botão em si) é levemente mais escuro que o
+  resto do app (`shadeColor('#FAF7F2', 0.04)`), sempre, em todo o painel
+  principal — decisão explícita do usuário, pra dar mais contraste atrás
+  dos cartões vívidos. Essa cor é aplicada **uma única vez**, no wrapper
+  raiz de `TEAjudoApp` (condicional a `view === 'panel'`), não mais numa
+  segunda `<div className="min-h-screen">` dentro do próprio `ChildPanel`
+  — duas divs com `min-h-screen` empilhadas forçavam a página a ficar
+  2× mais alta que a tela sempre que o conteúdo (poucos botões, poucas
+  linhas) era mais curto que a viewport, sobrando uma faixa clara vazia
+  embaixo e criando rolagem no desktop que não deveria existir.
 - **Ícone OU foto, nunca os dois ao mesmo tempo** — o formulário de novo
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre
@@ -715,6 +735,14 @@ decidem o texto e para onde volta o botão cancelar.
 `demo: true` (SendGrid não configurado no backend), mostra o código na tela.
 `handleVerifyCode` chama `POST /api/auth/verify-code` — a validação real
 acontece no backend, o frontend só repassa o que a pessoa digitou.
+
+**`handleLogout` também reseta `view` pra `'panel'`** (e limpa
+`pinInput`/`pinError`) — sem isso, `responsavel: null` só troca pra
+`AuthGate` por cima (o resto do estado do componente continua vivo por
+baixo), então sair de dentro da Área dos pais e logar de novo (mesma
+conta ou outra) caía direto de volta na Área dos pais, pulando o
+`ParentGate`/PIN inteiro. `view` é estado de navegação da sessão, não
+deveria sobreviver a um logout.
 
 ## Pendências conhecidas
 - [ ] Só 5 fotos em `game-subjects/` (todas do próprio Tuti, não de

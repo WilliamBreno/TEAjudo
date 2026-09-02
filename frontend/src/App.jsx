@@ -702,6 +702,13 @@ export default function TEAjudoApp() {
       // mesmo com erro de rede, limpa a sessão localmente
     }
     setResponsavel(null);
+    // `view` não é resetado sozinho pelo `!responsavel` (que só troca
+    // pra AuthGate por cima, sem desmontar o resto) — sem isso, sair de
+    // dentro da Área dos pais e logar de novo (mesma conta ou outra)
+    // caía direto na Área dos pais outra vez, pulando o PIN inteiro.
+    setView('panel');
+    setPinInput('');
+    setPinError('');
   }, []);
 
   // Fase 4: status da assinatura decide se o ChildPanel fica disponível.
@@ -777,6 +784,20 @@ export default function TEAjudoApp() {
       // cai em 'nitido' (fallback seguro pra quem já tinha algo salvo).
       const mergedSettings = { ...DEFAULT_SETTINGS, ...s };
       if (mergedSettings.buttonStyle !== 'tatil') mergedSettings.buttonStyle = 'nitido';
+      // Migração única: quem já tinha conta antes de voiceEnabled virar
+      // padrão true salvou voiceEnabled:false no localStorage, e esse
+      // valor salvo sempre vence o DEFAULT_SETTINGS no merge acima — sem
+      // isso, contas antigas nunca ganhavam a voz clonada nos botões
+      // (caindo no TTS do próprio aparelho), mesmo a tela de
+      // apresentação e o Tuti já usando a voz nova (eles não checam
+      // voiceEnabled, só os botões do painel checam).
+      let voiceMigrated = false;
+      try { voiceMigrated = await loadJSON('teajudo:voice-default-migrated', false); } catch (e) { /* ignore */ }
+      if (!voiceMigrated) {
+        mergedSettings.voiceEnabled = true;
+        await saveJSON('teajudo:settings', mergedSettings);
+        await saveJSON('teajudo:voice-default-migrated', true);
+      }
       setSettings(mergedSettings);
       setLogs(l);
       setPuzzleResults(p);
@@ -914,8 +935,13 @@ export default function TEAjudoApp() {
   }
 
   return (
-    <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
-      className="min-h-screen bg-[#FAF7F2] text-[#2B2B2B] pb-16">
+    // Fundo um pouco mais escuro que o resto do app, só no painel
+    // principal (view==='panel') — decisão explícita do usuário, pra dar
+    // mais contraste atrás dos botões AAC. Aplicado aqui, num único
+    // min-h-screen (não mais duplicado dentro do ChildPanel), pra não
+    // forçar a página a ficar mais alta que a tela com conteúdo curto.
+    <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif", backgroundColor: (view === 'panel' && !isBlocked) ? shadeColor('#FAF7F2', 0.04) : '#FAF7F2' }}
+      className="min-h-screen text-[#2B2B2B] pb-16">
       <style>{GLOBAL_STYLES}</style>
 
       {showWelcome && (
@@ -1517,10 +1543,12 @@ function ChildPanel({
   }, []);
 
   return (
-    // Fundo um pouco mais escuro que o resto do app (#FAF7F2 padrão), só
-    // no painel principal — decisão explícita do usuário, pra dar mais
-    // contraste atrás dos botões AAC.
-    <div className="min-h-screen" style={{ backgroundColor: shadeColor('#FAF7F2', 0.04) }}>
+    // O fundo mais escuro (#FAF7F2 sombreado) já vem do wrapper em
+    // TEAjudoApp, aplicado só quando view==='panel' — não duplicar
+    // min-h-screen aqui. Duas divs com min-h-screen empilhadas forçavam
+    // a página a ficar 2x mais alta que a tela em conteúdos curtos
+    // (poucos botões cabendo em poucas linhas), sobrando uma faixa clara
+    // vazia embaixo e criando rolagem desnecessária no desktop.
     <div className="max-w-3xl mx-auto px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <img src="/tuti/Logo.png" alt="TEAjudo" className="h-12 w-auto" />
@@ -1724,7 +1752,6 @@ function ChildPanel({
           <p className="col-span-full text-center text-[#999] py-10">Nenhum botão netegoria ainda.</p>
         )}
       </div>
-    </div>
     </div>
   );
 }
