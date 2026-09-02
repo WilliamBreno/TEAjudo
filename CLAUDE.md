@@ -532,9 +532,10 @@ decisão explícita do usuário; antes era 1x por sessão via
 quebrada tipo "assistente virtual de undefined!" pra quem logou num
 navegador novo, já que `childName` é local e não sincroniza entre
 dispositivos). Abaixo do vídeo, "TEAjudo" em texto HTML (não `Logo.png`,
-que virou a logo do `ChildPanel`) — T-E-A cada letra numa cor de
-`CATEGORY_META`, "judo" na mesma cor do A (decisão explícita do usuário,
-não a cor da marca). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
+que virou a logo do `ChildPanel`) — cores exatas pedidas pelo usuário:
+T vermelho (`#C0605A`, já usado no resto do app pra "perigo"/exclusão),
+E azul (`CATEGORY_META.sentimentos`), A verde (`CATEGORY_META.acoes`),
+"judo" amarelo (`CATEGORY_META.pessoas`). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
 ("Olá, sou o Tuti, assistente virtual de {childName}!") via
 `getOrSynthesizeAudio` — mesmo cache de áudio dos botões
 (`teajudo:audio-cache`), só que endereçado por uma chave própria

@@ -1407,10 +1407,14 @@ function WelcomeScreen({ childName, onFinish }) {
           Transtorno do Espectro Autista) cada letra numa cor de
           CATEGORY_META, "judo" na MESMA cor do A. */}
       <div className="text-3xl sm:text-4xl font-bold" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
-        <span style={{ color: CATEGORY_META.sentimentos.color }}>T</span>
-        <span style={{ color: CATEGORY_META.pessoas.color }}>E</span>
+        {/* Cores exatas pedidas pelo usuário (T vermelho, E azul, A verde,
+            judo amarelo) — vermelho já reaproveita o "danger" (#C0605A)
+            já usado no resto do app; os outros já batiam com
+            CATEGORY_META (sentimentos/ações/pessoas). */}
+        <span style={{ color: '#C0605A' }}>T</span>
+        <span style={{ color: CATEGORY_META.sentimentos.color }}>E</span>
         <span style={{ color: CATEGORY_META.acoes.color }}>A</span>
-        <span style={{ color: CATEGORY_META.acoes.color }}>judo</span>
+        <span style={{ color: CATEGORY_META.pessoas.color }}>judo</span>
       </div>
       {audioBlocked && (
         <button
