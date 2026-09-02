@@ -624,7 +624,22 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   — duas divs com `min-h-screen` empilhadas forçavam a página a ficar
   2× mais alta que a tela sempre que o conteúdo (poucos botões, poucas
   linhas) era mais curto que a viewport, sobrando uma faixa clara vazia
-  embaixo e criando rolagem no desktop que não deveria existir.
+  embaixo e criando rolagem no desktop que não deveria existir. Todo
+  `min-h-screen` do app (`TEAjudoApp`, `RegularizationScreen`) virou
+  **`min-h-dvh`** (`100dvh`, dynamic viewport height) em vez de `100vh` —
+  no celular, `100vh` conta a área atrás da barra de endereço do
+  navegador, que aparece/some ao tocar em qualquer botão; isso fazia a
+  altura "calculada" da página mudar sozinha a cada toque, e o navegador
+  reagia deslizando a própria barra de endereço por cima do conteúdo por
+  um instante (relatado como "a tela expande e volta"). `dvh` já
+  acompanha o tamanho real e visível da tela o tempo todo, sem esse
+  salto. Overlays de tela cheia que já usavam `fixed inset-0`
+  (`WelcomeScreen`, `BreakOverlay`) não tinham esse problema — `inset-0`
+  não depende de unidade de viewport. Na mesma leva, o aviso de
+  `voiceNotice` (voz personalizada indisponível) deixou de empurrar a
+  grade de botões pra baixo quando aparecia (`<p>` inline antes do grid) —
+  virou um toast `fixed`, flutuando por cima, sem afetar a altura da
+  página; era outra fonte do mesmo sintoma de "layout pulando".
 - **Ícone OU foto, nunca os dois ao mesmo tempo** — o formulário de novo
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre

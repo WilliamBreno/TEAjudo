@@ -917,7 +917,7 @@ export default function TEAjudoApp() {
   if (!authChecked || loading) {
     return (
       <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
-        className="min-h-screen flex items-center justify-center bg-[#FAF7F2] text-[#2B2B2B]">
+        className="min-h-dvh flex items-center justify-center bg-[#FAF7F2] text-[#2B2B2B]">
         <style>{GLOBAL_STYLES}</style>
         Carregando o TEAjudo…
       </div>
@@ -927,7 +927,7 @@ export default function TEAjudoApp() {
   if (!responsavel) {
     return (
       <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
-        className="min-h-screen bg-[#FAF7F2] text-[#2B2B2B]">
+        className="min-h-dvh bg-[#FAF7F2] text-[#2B2B2B]">
         <style>{GLOBAL_STYLES}</style>
         <AuthGate onAuthenticated={setResponsavel} settings={settings} onSaveSettings={persistSettings} />
       </div>
@@ -938,10 +938,16 @@ export default function TEAjudoApp() {
     // Fundo um pouco mais escuro que o resto do app, só no painel
     // principal (view==='panel') — decisão explícita do usuário, pra dar
     // mais contraste atrás dos botões AAC. Aplicado aqui, num único
-    // min-h-screen (não mais duplicado dentro do ChildPanel), pra não
+    // min-h-dvh (não mais duplicado dentro do ChildPanel), pra não
     // forçar a página a ficar mais alta que a tela com conteúdo curto.
+    // `dvh` (dynamic viewport height), não `vh`/`min-h-screen`: no
+    // celular, `100vh` conta a área atrás da barra de endereço do
+    // navegador, que aparece/some ao tocar em qualquer botão — isso
+    // fazia a altura da página "pular" (mostrava uma faixa branca se
+    // esticando e recolhendo) toda vez que a barra escondia/reaparecia.
+    // `dvh` já acompanha o tamanho real e visível da tela o tempo todo.
     <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif", backgroundColor: (view === 'panel' && !isBlocked) ? shadeColor('#FAF7F2', 0.04) : '#FAF7F2' }}
-      className="min-h-screen text-[#2B2B2B] pb-16">
+      className="min-h-dvh text-[#2B2B2B] pb-16">
       <style>{GLOBAL_STYLES}</style>
 
       {showWelcome && (
@@ -1495,7 +1501,7 @@ function BreakOverlay({ onContinue, pin }) {
 // criança lendo a tela.
 function RegularizationScreen({ onOpenParentGate }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 text-center gap-4 relative">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center gap-4 relative">
       <button
         onClick={onOpenParentGate}
         className="absolute top-4 right-4 p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm"
@@ -1616,7 +1622,14 @@ function ChildPanel({
       </div>
 
       {voiceNotice && (
-        <p className="text-sm text-[#B15E3E] bg-[#FBEFE7] rounded-xl px-3 py-2 mb-4">{voiceNotice}</p>
+        // `fixed`, fora do fluxo normal — um aviso inline aqui empurrava a
+        // grade de botões inteira pra baixo assim que a voz falhava (ex:
+        // TTS fora do ar), fazendo a página crescer de repente e voltar ao
+        // normal na próxima tentativa: exatamente o "pisca e volta" que
+        // soma com o problema da barra de endereço no celular (ver o
+        // `min-h-dvh` no wrapper de TEAjudoApp). Como aviso flutuante, ele
+        // não afeta a altura da página.
+        <p className="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-[92vw] text-center text-sm text-[#B15E3E] bg-[#FBEFE7] border border-[#F0D9C6] shadow-md rounded-xl px-3 py-2">{voiceNotice}</p>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
