@@ -160,10 +160,17 @@ async function saveJSON(key, value) {
 - `teajudo:settings` — `{pin, dailyLimitMinutes, voiceEnabled, showTimer,
   securityConfigured, parentEmail, buttonStyle, reduceMotion, childName}`
   — **não guarda mais chaves de API** (ElevenLabs e SendGrid/EmailJS foram
-  para `backend/.env`). `childName` (nome da criança, usado nas frases do
-  Tuti — ver seção "Mascote Tuti" abaixo) é capturado no formulário de
-  cadastro (`AuthGate`) e só existe localmente — não é dado de conta, não
-  vai pro backend, não sincroniza entre dispositivos
+  para `backend/.env`). `voiceEnabled` vem **`true` por padrão** (decisão
+  explícita do usuário: voz padronizada — o mesmo `ELEVENLABS_VOICE_ID`
+  do backend já toca na `WelcomeScreen` e na `TutiBubble` de qualquer
+  jeito, então os botões do `ChildPanel` passaram a usar a mesma voz por
+  padrão também, em vez de exigir que o pai ligasse manualmente nas
+  Configurações; continua com fallback automático pra voz do aparelho se
+  o backend estiver fora do ar/sem `ELEVENLABS_API_KEY` configurada — ver
+  `playPhrase`). `childName` (nome da criança, usado nas frases do Tuti —
+  ver seção "Mascote Tuti" abaixo) é capturado no formulário de cadastro
+  (`AuthGate`) e só existe localmente — não é dado de conta, não vai pro
+  backend, não sincroniza entre dispositivos
 - `teajudo:logs` — últimos 400 eventos de uso: `{ts, type, buttonId,
   category, label}`
 - `teajudo:puzzle-results` — últimos 200 resultados de quebra-cabeça:
@@ -570,18 +577,23 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 
 - **Cores por categoria gramatical** (ações=verde, pessoas=amarelo,
   objetos=laranja, sentimentos=azul, perguntas=roxo, social=rosa), inspirado
-  na "Fitzgerald Key" usada em pranchas de CAA reais. Cada botão também
-  aceita cor individual customizada — a cor da categoria é só a sugestão
-  inicial. As cores são **sólidas/vívidas** (não pastel) — o fundo do botão
-  é a própria cor (degradê claro→vívido, não plano, pra dar brilho), com
-  **borda neon** (versão bem clareada da mesma cor + glow em camadas via
-  `box-shadow`) nos dois estilos visuais (`getButtonCardStyle`, "Tátil" e
-  "Nítido" — decisão explícita do usuário: o "Nítido" tinha regredido pra
-  fundo branco com só um acento colorido numa passada visual anterior,
-  contrariando esse princípio, e foi corrigido). Contraste de texto
-  calculado automaticamente (`getContrastText`) nos dois estilos, texto em
-  `font-extrabold` com leve `text-shadow` pra mais ênfase (não mudou de
-  tamanho).
+  na "Fitzgerald Key" usada em pranchas de CAA reais — a cor carrega
+  informação (categoria gramatical), não é só decoração, então esse
+  agrupamento não muda. Cada botão também aceita cor individual
+  customizada — a cor da categoria é só a sugestão inicial.
+  **Visual dos botões é deliberadamente chamativo e "bonito" pras
+  crianças** (decisão explícita do usuário, além da função de CAA em si):
+  cores **sólidas/vívidas** (não pastel) — o fundo do botão é a própria
+  cor, num degradê claro→vívido (não plano) pra dar brilho, com um
+  reflexo de vidro/gloss fixo no topo (efeito 3D, estático — sem virar
+  animação contínua) e **borda neon** (versão bem clareada da mesma cor +
+  glow em camadas via `box-shadow`) nos dois estilos visuais
+  (`getButtonCardStyle`, "Tátil" e "Nítido" — o "Nítido" tinha regredido
+  pra fundo branco com só um acento colorido numa passada visual
+  anterior, contrariando o princípio original de "fundo é a própria cor",
+  e foi corrigido). Contraste de texto calculado automaticamente
+  (`getContrastText`) nos dois estilos, texto em `font-extrabold` com
+  leve `text-shadow` pra mais ênfase (não mudou de tamanho).
 - **Ícone OU foto, nunca os dois ao mesmo tempo** — o formulário de novo
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre

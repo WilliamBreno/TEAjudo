@@ -319,7 +319,12 @@ const DEFAULT_BUTTONS = [
 const DEFAULT_SETTINGS = {
   pin: '0000',
   dailyLimitMinutes: null,
-  voiceEnabled: false,
+  // Padrão ligado — mesma voz (ElevenLabs, via ELEVENLABS_VOICE_ID no
+  // backend) usada na WelcomeScreen e na TutiBubble, agora também nos
+  // botões por padrão, em vez de exigir que o pai ligue manualmente nas
+  // Configurações. Continua com fallback automático pra voz do aparelho
+  // se o backend estiver fora do ar/não configurado (ver playPhrase).
+  voiceEnabled: true,
   showTimer: false,
   securityConfigured: false,
   parentEmail: '',
