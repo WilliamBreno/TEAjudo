@@ -1371,6 +1371,18 @@ function WelcomeScreen({ childName, onFinish }) {
   function handleTapToPlayAudio() {
     const audio = audioElRef.current;
     if (!audio) return;
+    // Reproduz a voz JUNTO com o vídeo de novo do início — sem isso, o
+    // vídeo (mudo, autoplay quase nunca bloqueado) já tinha terminado
+    // sozinho enquanto o áudio ficava esperando o toque, e apertar o
+    // botão só tocava a voz sozinha, sem a apresentação visual junto.
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.currentTime = 0;
+        video.play().catch(() => {});
+      } catch (e) { /* ignora */ }
+    }
+    setVideoEnded(false);
     audio.play().then(() => setAudioBlocked(false)).catch(() => {});
   }
 
@@ -1401,9 +1413,15 @@ function WelcomeScreen({ childName, onFinish }) {
   // Fecha 800ms depois do que terminar por último entre vídeo e áudio —
   // o vídeo já para sozinho no último frame quando acaba (comportamento
   // nativo do <video> sem loop), então não precisa pausar manualmente.
+  // `audioBlocked` NÃO conta como "terminado" aqui — antes contava, e a
+  // tela fechava sozinha assim que o vídeo mudo acabava, mesmo com a
+  // pessoa ainda não tendo apertado "Tocar a voz do Tuti"; quem apertava
+  // depois disso ouvia só a voz solta, sem a apresentação. Agora a tela
+  // fica esperando o toque (o botão "Pular" continua sempre disponível
+  // pra quem não quiser esperar).
   useEffect(() => {
-    if (finishedRef.current) return;
-    if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable || audioBlocked)) {
+    if (finishedRef.current || audioBlocked) return;
+    if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable)) {
       const t = setTimeout(finish, 800);
       return () => clearTimeout(t);
     }
@@ -1412,10 +1430,14 @@ function WelcomeScreen({ childName, onFinish }) {
   // Rede de segurança: nunca deixa a tela travada indefinidamente, mesmo
   // se algum evento de vídeo/áudio falhar de um jeito que os efeitos
   // acima não previram — sempre libera o ChildPanel depois de um tempo.
+  // Pausada enquanto audioBlocked (esperando o toque em "Tocar a voz do
+  // Tuti") — do contrário essa rede de segurança fecharia a tela sozinha
+  // antes da pessoa conseguir tocar o botão.
   useEffect(() => {
+    if (audioBlocked) return;
     const t = setTimeout(finish, 15000);
     return () => clearTimeout(t);
-  }, [finish]);
+  }, [finish, audioBlocked]);
 
   return (
     <div

@@ -561,6 +561,16 @@ em vez de falhar em silêncio (`playAudioBase64` aceita um callback
 `onBlocked` à parte do `onEnd` justamente pra isso). Tem um botão "Pular"
 sempre visível.
 
+Enquanto `audioBlocked` for `true`, a tela **não fecha sozinha** (nem
+pelo timer de 800ms depois do vídeo acabar, nem pela rede de segurança de
+15s) — antes fechava, porque o vídeo mudo quase nunca é bloqueado e
+terminava sozinho enquanto o áudio ainda esperava o toque; quem apertava
+"Tocar a voz do Tuti" depois disso ouvia só a voz solta, sem a
+apresentação (vídeo já tinha acabado, às vezes a tela já tinha até
+fechado). `handleTapToPlayAudio` agora reinicia o vídeo do zero
+(`currentTime = 0` + `play()`) junto de tocar o áudio, pra voz e
+apresentação sempre andarem juntas.
+
 `TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
 arquitetado pra qualquer aba que não seja o `ChildPanel`, hoje só usado
 em `GamesView`; uma aba nova no futuro só precisa renderizar
