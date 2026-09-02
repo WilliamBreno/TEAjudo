@@ -1456,6 +1456,10 @@ function ChildPanel({
   }, []);
 
   return (
+    // Fundo um pouco mais escuro que o resto do app (#FAF7F2 padrão), só
+    // no painel principal — decisão explícita do usuário, pra dar mais
+    // contraste atrás dos botões AAC.
+    <div className="min-h-screen" style={{ backgroundColor: shadeColor('#FAF7F2', 0.04) }}>
     <div className="max-w-3xl mx-auto px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
         <img src="/tuti/Logo.png" alt="TEAjudo" className="h-12 w-auto" />
@@ -1655,6 +1659,7 @@ function ChildPanel({
           <p className="col-span-full text-center text-[#999] py-10">Nenhum botão netegoria ainda.</p>
         )}
       </div>
+    </div>
     </div>
   );
 }
