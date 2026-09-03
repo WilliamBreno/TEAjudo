@@ -238,6 +238,40 @@ const GLOBAL_STYLES = `
       transform: none !important;
     }
   }
+
+  /* ---------- Modo escuro ---------- */
+  /* Retrofit por cima das classes utilitárias que já existem no app
+     inteiro, em vez de reescrever componente a componente (o app usa
+     cor via classes Tailwind arbitrárias tipo bg-[#FAF7F2] espalhadas
+     por muitos componentes, não CSS-in-JS nem tokens já centralizados)
+     — essas poucas classes (bg-white, bg-[#FAF7F2], bg-[#F3F0EA],
+     text-[#2B2B2B]/[#5A5A5A]/[#999], border-[#EADFCB]/[#DDD]) cobrem a
+     grande maioria das superfícies/textos/bordas do app, então virar
+     essas por cima de [data-theme="dark"] (setado no <html>, ver
+     TEAjudoApp) já tinge o app inteiro sem precisar tocar em cada
+     componente individualmente. Cores por categoria dos botões do
+     ChildPanel (CATEGORY_META) NÃO mudam de matiz no escuro — só a
+     intensidade do glow neon é reduzida via getButtonCardStyle (ver
+     App.jsx), não por CSS.
+  */
+  [data-theme="dark"] .tea-app-root { background-color: #14151A !important; color: #F4F4F5 !important; }
+  [data-theme="dark"] .bg-white { background-color: #22242B !important; }
+  [data-theme="dark"] .bg-\\[\\#FAF7F2\\] { background-color: #14151A !important; }
+  [data-theme="dark"] .bg-\\[\\#F3F0EA\\] { background-color: #2A2C34 !important; }
+  [data-theme="dark"] .text-\\[\\#2B2B2B\\] { color: #F4F4F5 !important; }
+  [data-theme="dark"] .text-\\[\\#5A5A5A\\] { color: #B8BAC2 !important; }
+  [data-theme="dark"] .text-\\[\\#999\\] { color: #8A8D97 !important; }
+  [data-theme="dark"] .border-\\[\\#EADFCB\\] { border-color: #33353D !important; }
+  [data-theme="dark"] .border-\\[\\#DDD\\] { border-color: #33353D !important; }
+  [data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select {
+    background-color: #22242B;
+    color: #F4F4F5;
+  }
+  [data-theme="dark"] input::placeholder, [data-theme="dark"] textarea::placeholder {
+    color: #8A8D97;
+  }
+  /* A logo (Logo.png) já tem fundo transparente e contorno branco nas
+     letras — continua legível sem chip atrás dela no escuro. */
 `;
 
 // Cores por categoria gramatical, inspiradas na "Fitzgerald Key" usada em
@@ -338,6 +372,7 @@ const DEFAULT_SETTINGS = {
   parentEmail: '',
   buttonStyle: 'nitido', // 'tatil' | 'nitido' — só o "material" visual do botão
   reduceMotion: false,
+  theme: 'light', // 'light' | 'dark' — aplicado via data-theme no <html>, ver TEAjudoApp
   childName: '', // nome da criança, usado nas frases do Tuti (WelcomeScreen)
 };
 
@@ -490,7 +525,14 @@ function getConfettiPieces(color) {
 
 // Calcula o "material" visual do cartão do botão (fundo, borda, sombra) para
 // cada um dos 2 estilos — a cor em si (categoria/Fitzgerald Key) não muda.
-function getButtonCardStyle(buttonStyle, color) {
+// `theme` só afeta a intensidade do glow neon (reduzida no escuro — o
+// mesmo brilho colorido já parece bem mais forte sobre um fundo escuro,
+// sem ajuste fica exagerado); nunca a cor/matiz do botão em si.
+function getButtonCardStyle(buttonStyle, color, theme = 'light') {
+  // ~25% menos opacidade nas camadas de glow no escuro (dentro da faixa
+  // de 20-30% pedida) — só nas sombras coloridas, não no gradiente nem
+  // na borda do botão.
+  const glow = theme === 'dark' ? 0.75 : 1;
   if (buttonStyle === 'nitido') {
     // Fundo é a própria cor (vívida, não pastel — ver "Decisões de
     // design" no CLAUDE.md), num degradê claro→vívido pra dar brilho, com
@@ -500,10 +542,10 @@ function getButtonCardStyle(buttonStyle, color) {
       borderRadius: '18px',
       backgroundImage: `linear-gradient(160deg, ${lightenColor(color, 0.45)} 0%, ${color} 45%, ${shadeColor(color, 0.22)} 100%)`,
       border: `3px solid ${lightenColor(color, 0.45)}`,
-      boxShadow: `0 0 0 1px ${hexToRgba(color, 0.5)}, 0 0 12px ${hexToRgba(color, 0.7)}, 0 0 26px ${hexToRgba(color, 0.45)}, 0 8px 16px rgba(0,0,0,0.16)`,
+      boxShadow: `0 0 0 1px ${hexToRgba(color, 0.5 * glow)}, 0 0 12px ${hexToRgba(color, 0.7 * glow)}, 0 0 26px ${hexToRgba(color, 0.45 * glow)}, 0 8px 16px rgba(0,0,0,0.16)`,
       // Consumidos por [data-style="nitido"]:hover/:focus-visible acima.
       '--tea-color': color,
-      '--tea-glow': hexToRgba(color, 0.5),
+      '--tea-glow': hexToRgba(color, 0.5 * glow),
     };
   }
   // tatil — neumórfico: sombra escura embaixo/direita + luz em cima/esquerda
@@ -515,7 +557,7 @@ function getButtonCardStyle(buttonStyle, color) {
     borderRadius: '26px',
     backgroundImage: `linear-gradient(140deg, ${lightenColor(color, 0.4)} 0%, ${color} 45%, ${shadeColor(color, 0.25)} 100%)`,
     border: `3px solid ${lightenColor(color, 0.45)}`,
-    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 14px ${hexToRgba(color, 0.75)}, 0 0 30px ${hexToRgba(color, 0.45)}`,
+    boxShadow: `7px 7px 16px rgba(0,0,0,0.16), -6px -6px 14px rgba(255,255,255,0.65), 0 0 14px ${hexToRgba(color, 0.75 * glow)}, 0 0 30px ${hexToRgba(color, 0.45 * glow)}`,
     '--tea-color': color,
   };
 }
@@ -873,6 +915,15 @@ export default function TEAjudoApp() {
     saveJSON('teajudo:settings', next);
   }, []);
 
+  // Modo escuro: `data-theme` no <html> (não num wrapper interno) pra
+  // valer pra tela inteira de uma vez só, incluindo overlays fixed
+  // (WelcomeScreen, BreakOverlay) que ficam fora da árvore do painel
+  // principal. As regras de cor em si vivem em GLOBAL_STYLES, escopadas
+  // por `[data-theme="dark"] ...`.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', settings.theme === 'dark' ? 'dark' : 'light');
+  }, [settings.theme]);
+
   const addLog = useCallback((entry) => {
     setLogs((prev) => {
       const next = [...prev, { ts: Date.now(), ...entry }].slice(-400);
@@ -980,7 +1031,7 @@ export default function TEAjudoApp() {
   if (!authChecked || loading) {
     return (
       <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
-        className="min-h-svh flex items-center justify-center bg-[#FAF7F2] text-[#2B2B2B]">
+        className="tea-app-root min-h-svh flex items-center justify-center bg-[#FAF7F2] text-[#2B2B2B]">
         <style>{GLOBAL_STYLES}</style>
         Carregando o TEAjudo…
       </div>
@@ -990,7 +1041,7 @@ export default function TEAjudoApp() {
   if (!responsavel) {
     return (
       <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}
-        className="min-h-svh bg-[#FAF7F2] text-[#2B2B2B]">
+        className="tea-app-root min-h-svh bg-[#FAF7F2] text-[#2B2B2B]">
         <style>{GLOBAL_STYLES}</style>
         <AuthGate onAuthenticated={setResponsavel} settings={settings} onSaveSettings={persistSettings} />
       </div>
@@ -1018,7 +1069,7 @@ export default function TEAjudoApp() {
     // pouquinho de espaço embaixo quando a barra está escondida, troca
     // aceitável por não ter mais nenhum salto visual.
     <div style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif", backgroundColor: (view === 'panel' && !isBlocked) ? shadeColor('#FAF7F2', 0.04) : '#FAF7F2' }}
-      className="min-h-svh text-[#2B2B2B] pb-16">
+      className="tea-app-root min-h-svh text-[#2B2B2B] pb-16">
       <style>{GLOBAL_STYLES}</style>
 
       {showWelcome && (
@@ -1046,6 +1097,7 @@ export default function TEAjudoApp() {
           onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
+          theme={settings.theme}
           onChangeStyle={(patch) => persistSettings({ ...settings, ...patch })}
         />
       )}
@@ -1633,7 +1685,7 @@ function RegularizationScreen({ onOpenParentGate }) {
 
 function ChildPanel({
   buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
-  buttonStyle, reduceMotion, onChangeStyle,
+  buttonStyle, reduceMotion, theme, onChangeStyle,
 }) {
   const [filter, setFilter] = useState('todos');
   const visibleButtons = buttons.filter((b) => !b.locked);
@@ -1775,7 +1827,7 @@ function ChildPanel({
               onClick={() => onPlay(b)}
               className={`${hasEntered ? '' : 'tea-popin '}relative rounded-3xl flex flex-col items-center justify-center gap-2 py-5 px-2 min-h-28 active:scale-90 transition-transform duration-150 ${showEffects ? 'tea-btn-bounce' : ''}`}
               style={{
-                ...getButtonCardStyle(buttonStyle, color),
+                ...getButtonCardStyle(buttonStyle, color, theme),
                 animationDelay: `${Math.min(i, 12) * 30}ms`,
               }}
               onAnimationEnd={(e) => {
@@ -2370,6 +2422,19 @@ function PuzzleBoard({ subject, level, showTimer, onExit, onFinish }) {
         <button onClick={reshuffle} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><RotateCcw size={18} /></button>
       </div>
       {done && <ConfettiBurst />}
+
+      {/* Miniatura da imagem completa, sempre visível — tipo a caixa de
+          um quebra-cabeça físico, pra criança conferir como deve ficar
+          enquanto monta. Usa a foto original (não a versão já recortada
+          em peças de imgSrc), sem distorção. */}
+      <div className="flex flex-col items-center gap-1 mb-3">
+        <img
+          src={subject.imageData || subject.imageSrc}
+          alt={`Referência: ${subject.label}`}
+          className="w-20 h-20 object-cover rounded-xl border-2 border-white shadow-md"
+        />
+        <span className="text-[10px] text-[#999]">Assim deve ficar</span>
+      </div>
 
       <p className="text-center text-xs text-[#999] mb-2">Arraste uma peça sobre outra para trocar — ou toque em duas peças</p>
 
@@ -4334,6 +4399,25 @@ function SettingsPanel({ settings, onSave, onRequestPinChange, responsavel, onLo
       )}
 
       <SubscriptionCard />
+
+      <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
+        <h3 className="font-bold mb-3 flex items-center gap-2"><Moon size={18} /> Aparência</h3>
+        <p className="text-sm text-[#5A5A5A] mb-3">Vale pro app inteiro, inclusive o painel da criança — as cores dos botões continuam as mesmas, só o resto da tela muda.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => update('theme', 'light')}
+            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border flex items-center justify-center gap-2 transition-all duration-200 ${local.theme !== 'dark' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          >
+            <Sun size={16} /> Claro
+          </button>
+          <button
+            onClick={() => update('theme', 'dark')}
+            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border flex items-center justify-center gap-2 transition-all duration-200 ${local.theme === 'dark' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          >
+            <Moon size={16} /> Escuro
+          </button>
+        </div>
+      </div>
 
       <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
         <h3 className="font-bold mb-3 flex items-center gap-2"><Clock size={18} /> Tempo de uso</h3>

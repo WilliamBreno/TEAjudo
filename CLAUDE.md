@@ -158,7 +158,9 @@ async function saveJSON(key, value) {
   cai na sugestão da categoria em `CATEGORY_DEFAULT_ICON`, via
   `getMinimalIcon()`)
 - `teajudo:settings` — `{pin, dailyLimitMinutes, voiceEnabled, showTimer,
-  securityConfigured, parentEmail, buttonStyle, reduceMotion, childName}`
+  securityConfigured, parentEmail, buttonStyle, reduceMotion, theme,
+  childName}` (`theme`: `'light' | 'dark'` — ver seção "Modo escuro"
+  abaixo)
   — **não guarda mais chaves de API** (ElevenLabs e SendGrid/EmailJS foram
   para `backend/.env`). `voiceEnabled` vem **`true` por padrão** (decisão
   explícita do usuário: voz padronizada — o mesmo `ELEVENLABS_VOICE_ID`
@@ -619,6 +621,72 @@ enxerga arquivos em `public/`, só os que passam pelo bundler) — adicionar
 ou remover arquivo em `game-subjects/` exige atualizar
 `BUILTIN_PUZZLE_SUBJECTS` também.
 
+## Modo escuro
+`settings.theme` (`'light' | 'dark'`, padrão `'light'`) — toggle em
+`SettingsPanel` (card "Aparência", ícones `Sun`/`Moon`), aplicado via
+`data-theme` no `<html>` (não num wrapper interno): um `useEffect` em
+`TEAjudoApp` seta `document.documentElement.setAttribute('data-theme',
+...)` toda vez que `settings.theme` muda. `data-theme` no `<html>` (em
+vez de só num wrapper do painel) garante que overlays `fixed inset-0`
+fora da árvore do painel principal (`WelcomeScreen`, `BreakOverlay`)
+também tingem — seletores CSS descendentes enxergam qualquer atributo
+lá em cima, não importa onde o `<style>` foi injetado no DOM.
+
+**Retrofit por cima das classes utilitárias já existentes, não reescrita
+componente a componente.** O app usa cor via classes Tailwind
+arbitrárias (`bg-[#FAF7F2]`, `text-[#5A5A5A]` etc.) espalhadas por
+dezenas de componentes, não tokens centralizados nem CSS-in-JS — uma
+conversão completa pra CSS custom properties tocaria centenas de
+lugares. Em vez disso, `GLOBAL_STYLES` ganhou uma seção de overrides
+`[data-theme="dark"] .classe { ... !important }` mirando só as poucas
+classes que cobrem a grande maioria das superfícies/textos/bordas do
+app inteiro: `bg-white`, `bg-[#FAF7F2]`, `bg-[#F3F0EA]`,
+`text-[#2B2B2B]`/`[#5A5A5A]`/`[#999]`, `border-[#EADFCB]`/`[#DDD]`
+— cobre a Área dos pais, formulários, cartões e gráficos quase por
+completo sem precisar editar componente por componente. `input`,
+`textarea` e `select` (sem `bg-white` explícito, dependendo do fundo
+branco padrão do navegador) têm fundo/texto/placeholder tingidos à
+parte, por seletor de elemento (não de classe). Fundo geral (`.tea-app-
+root`, classe adicionada só como gancho de CSS nos 3 wrappers de topo
+de `TEAjudoApp`) e cor do texto raiz também forçados via `!important`
+pra vencer o `backgroundColor` inline dinâmico que já existia ali (o do
+"fundo mais escuro no painel", só light).
+
+Pegadinha registrada aqui pra não cair de novo: dentro de um template
+string JS normal (crase, não `String.raw`), `\[` e `\#` **não são
+sequências de escape reconhecidas** — o JavaScript remove a barra
+invertida ao processar a string, então `.bg-\[\#F3F0EA\]` no código-
+fonte vira `.bg-[#F3F0EA]` de verdade no CSS gerado (sem barras), que é
+seletor inválido (o navegador lê `[#F3F0EA]` como tentativa de seletor
+de atributo, falha o parse e descarta a regra inteira em silêncio — sem
+erro visível no console). Escrever `\\[`/`\\#` (barra dupla) é
+obrigatório pra sobreviver ao processamento da template string e virar
+uma barra simples de verdade no CSS final. Isso comeu a tarde inteira
+até ser encontrado via inspeção direta do `CSSStyleSheet.cssRules` no
+navegador (o `<style>` continha o texto certo, mas as regras com
+colchete simplesmente não apareciam no CSSOM).
+
+**Cores dos botões do `ChildPanel` não mudam de matiz no escuro** — as
+cores de `CATEGORY_META` continuam as mesmas (a cor carrega significado
+gramatical, ver "Decisões de design" abaixo, isso não muda por tema).
+Só a intensidade do glow neon é reduzida (~25%, dentro da faixa de
+20-30% pedida) via `getButtonCardStyle(buttonStyle, color, theme)` — um
+parâmetro novo que multiplica só a opacidade das camadas de sombra
+colorida (`hexToRgba(color, alfa * glow)`), nunca a cor do gradiente/
+borda em si. Sem isso, o brilho colorido (já forte no claro, ver
+"Decisões de design") ficaria exagerado sobre um fundo escuro.
+
+**Logo (`/tuti/Logo.png`) não precisou de chip atrás dela** — já tem
+fundo transparente e contorno branco grosso em cada letra de "TEAjudo",
+então continua legível sozinha sobre o cabeçalho escuro; a condição do
+pedido original ("se tiver fundo branco sólido, adicione um chip") não
+se aplicou.
+
+Testado visualmente (Playwright) em todas as telas principais no
+escuro: `AuthGate`, `ChildPanel`, as 4 abas da Área dos pais (Botões,
+Jogos, Configurações, Análise — gráficos do Recharts incluídos) e a
+tela de seleção de Jogos da criança — sem regressão no tema claro.
+
 ## Decisões de design (não reverter sem motivo forte)
 Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 
@@ -690,6 +758,10 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   variados — o ideal continua sendo fotos genéricas e diversas (mais
   fáceis de generalizar pra vida real da criança); ver pendência na lista
   abaixo.
+- **Quebra-cabeça mostra a imagem de referência completa o tempo todo**
+  (miniatura acima do tabuleiro, com legenda "Assim deve ficar") — tipo a
+  caixa de um quebra-cabeça físico. Usa a foto original do assunto, não a
+  versão já recortada em peças.
 - **Sem animação contínua/ambiente no painel da criança, com uma exceção
   deliberada** — de resto, só anima em resposta a uma ação real (tocar
   botão, completar quebra-cabeça); movimento constante pode
