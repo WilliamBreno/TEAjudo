@@ -1528,7 +1528,7 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
     <div className="max-w-sm mx-auto px-4 pt-16 text-center">
       {/* Logo.png já traz a palavra "TEAjudo" desenhada — não repete o
           texto por baixo (ver WelcomeScreen, mesma lógica). */}
-      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 w-auto mx-auto mb-3" />
+      <img src="/tuti/Logo.png" alt="TEAjudo" className="h-20 w-auto mx-auto mb-3" />
       <p className="text-[#5A5A5A] mb-6 text-sm">
         {mode === 'login' ? 'Entre com sua conta para continuar.' : 'Crie sua conta para começar (7 dias grátis).'}
       </p>
@@ -1612,16 +1612,25 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
 // entre vídeo e áudio terminar, ou a qualquer momento via "Pular".
 function WelcomeScreen({ childName, onFinish }) {
   const [closing, setClosing] = useState(false);
+  // A tela só passa a mostrar vídeo/voz quando a síntese de áudio já
+  // resolveu (sucesso ou falha) — decisão explícita do usuário, pra
+  // vídeo e voz sempre começarem juntos, sem aquele instante de vídeo
+  // mudo sozinho enquanto a voz ainda carrega em segundo plano. Antes
+  // disso, mostra só a logo (sem vídeo, sem tentar tocar nada ainda).
+  const [ready, setReady] = useState(false);
+  const [audioBase64, setAudioBase64] = useState(null);
   const [videoEnded, setVideoEnded] = useState(false);
   const [videoUnavailable, setVideoUnavailable] = useState(false);
   const [audioEnded, setAudioEnded] = useState(false);
   const [audioUnavailable, setAudioUnavailable] = useState(false);
-  // Autoplay de ÁUDIO (não-mudo) é bloqueado pelo navegador com muito mais
-  // frequência que o de vídeo mudo — principalmente porque esse play()
-  // acontece depois de um `await` (buscar/sintetizar o áudio), fora da
-  // janela de "gesto do usuário" que os navegadores exigem. Sem
-  // detectar isso, o áudio falhava em silêncio e a pessoa nunca ouvia o
-  // Tuti falar, mesmo com tudo funcionando do lado do servidor.
+  // Mesmo com vídeo e voz começando juntos, o navegador ainda pode
+  // bloquear o áudio (política de autoplay é sobre ter ou não um gesto
+  // recente do usuário, não sobre o áudio "estar pronto" — isso nunca
+  // dá pra eliminar 100%, principalmente ao recarregar a página sem
+  // nenhum toque anterior). Continua com o botão manual como último
+  // recurso pra esses casos, mas agora ele fica bem mais raro: só
+  // aparece quando o navegador de fato recusa o autoplay, nunca por a
+  // tela ter aparecido cedo demais.
   const [audioBlocked, setAudioBlocked] = useState(false);
   const finishedRef = useRef(false);
   const videoRef = useRef(null);
@@ -1631,25 +1640,49 @@ function WelcomeScreen({ childName, onFinish }) {
     let cancelled = false;
     (async () => {
       try {
-        const audioBase64 = await getOrSynthesizeAudio(
+        const base64 = await getOrSynthesizeAudio(
           `welcome:${childName}`,
           `Olá, sou o Tuti, assistente virtual de ${childName}!`
         );
         if (cancelled) return;
-        audioElRef.current = playAudioBase64(
-          audioBase64,
-          () => { if (!cancelled) setAudioEnded(true); },
-          () => { if (!cancelled) setAudioBlocked(true); }
-        );
+        setAudioBase64(base64);
       } catch (e) {
         // Sem voz disponível (backend fora do ar/não configurado) — a tela
-        // continua funcionando só com o vídeo, sem travar esperando um
-        // áudio que nunca vai terminar.
+        // segue só com o vídeo, sem travar esperando um áudio que nunca
+        // vai chegar.
         if (!cancelled) setAudioUnavailable(true);
+      } finally {
+        if (!cancelled) setReady(true);
       }
     })();
     return () => { cancelled = true; };
   }, [childName]);
+
+  // Dispara vídeo + voz juntos assim que `ready` vira true (nunca antes).
+  useEffect(() => {
+    if (!ready) return;
+    const video = videoRef.current;
+    if (video) {
+      // Navegadores mobile (Safari no iPhone principalmente) têm políticas
+      // de autoplay bem mais restritas — mesmo mudo, o autoplay pode
+      // falhar de verdade (ex: modo de baixo consumo). `.play()` devolve
+      // uma Promise que dá pra capturar o erro; sem isso um autoplay
+      // bloqueado nunca dispara `onEnded` e a tela ficava travada pra
+      // sempre esperando um vídeo que nunca chegou a começar.
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => setVideoUnavailable(true));
+      }
+    }
+    if (audioBase64) {
+      audioElRef.current = playAudioBase64(
+        audioBase64,
+        () => setAudioEnded(true),
+        () => setAudioBlocked(true)
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   function handleTapToPlayAudio() {
     const audio = audioElRef.current;
@@ -1669,23 +1702,6 @@ function WelcomeScreen({ childName, onFinish }) {
     audio.play().then(() => setAudioBlocked(false)).catch(() => {});
   }
 
-  // Navegadores mobile (Safari no iPhone principalmente) têm políticas de
-  // autoplay bem mais restritas — mesmo com muted+playsInline, o
-  // autoplay pode falhar de verdade (ex: modo de baixo consumo, economia
-  // de dados). O atributo `autoPlay` sozinho falha em silêncio; chamar
-  // `.play()" manualmente devolve uma Promise que dá pra capturar o erro.
-  // Sem isso, um autoplay bloqueado nunca dispara `onEnded` e a tela
-  // ficava travada pra sempre esperando um vídeo que nunca chegou a
-  // começar.
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const playPromise = video.play();
-    if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch(() => setVideoUnavailable(true));
-    }
-  }, []);
-
   const finish = useCallback(() => {
     if (finishedRef.current) return;
     finishedRef.current = true;
@@ -1696,12 +1712,9 @@ function WelcomeScreen({ childName, onFinish }) {
   // Fecha 800ms depois do que terminar por último entre vídeo e áudio —
   // o vídeo já para sozinho no último frame quando acaba (comportamento
   // nativo do <video> sem loop), então não precisa pausar manualmente.
-  // `audioBlocked` NÃO conta como "terminado" aqui — antes contava, e a
-  // tela fechava sozinha assim que o vídeo mudo acabava, mesmo com a
-  // pessoa ainda não tendo apertado "Tocar a voz do Tuti"; quem apertava
-  // depois disso ouvia só a voz solta, sem a apresentação. Agora a tela
-  // fica esperando o toque (o botão "Pular" continua sempre disponível
-  // pra quem não quiser esperar).
+  // `audioBlocked` NÃO conta como "terminado" aqui — a tela fica
+  // esperando o toque (o botão "Pular" continua sempre disponível pra
+  // quem não quiser esperar).
   useEffect(() => {
     if (finishedRef.current || audioBlocked) return;
     if ((videoEnded || videoUnavailable) && (audioEnded || audioUnavailable)) {
@@ -1713,14 +1726,15 @@ function WelcomeScreen({ childName, onFinish }) {
   // Rede de segurança: nunca deixa a tela travada indefinidamente, mesmo
   // se algum evento de vídeo/áudio falhar de um jeito que os efeitos
   // acima não previram — sempre libera o ChildPanel depois de um tempo.
-  // Pausada enquanto audioBlocked (esperando o toque em "Tocar a voz do
-  // Tuti") — do contrário essa rede de segurança fecharia a tela sozinha
-  // antes da pessoa conseguir tocar o botão.
+  // Só conta a partir de `ready` (antes disso não tem nada tocando ainda
+  // pra "travar"). Pausada enquanto audioBlocked (esperando o toque em
+  // "Tocar a voz do Tuti") — do contrário essa rede de segurança fecharia
+  // a tela sozinha antes da pessoa conseguir tocar o botão.
   useEffect(() => {
-    if (audioBlocked) return;
+    if (!ready || audioBlocked) return;
     const t = setTimeout(finish, 15000);
     return () => clearTimeout(t);
-  }, [finish, audioBlocked]);
+  }, [ready, finish, audioBlocked]);
 
   return (
     <div
@@ -1729,16 +1743,22 @@ function WelcomeScreen({ childName, onFinish }) {
       <button onClick={finish} className="absolute top-4 right-4 text-sm text-[#999] underline">
         Pular
       </button>
-      <video
-        ref={videoRef}
-        src="/tuti/tuti-intro.mp4"
-        muted
-        playsInline
-        autoPlay
-        onEnded={() => setVideoEnded(true)}
-        onError={() => setVideoUnavailable(true)}
-        className="w-full max-w-xs rounded-3xl shadow-sm"
-      />
+      {ready ? (
+        <video
+          ref={videoRef}
+          src="/tuti/tuti-intro.mp4"
+          muted
+          playsInline
+          onEnded={() => setVideoEnded(true)}
+          onError={() => setVideoUnavailable(true)}
+          className="w-full max-w-xs rounded-3xl shadow-sm"
+        />
+      ) : (
+        // Enquanto a voz ainda está sendo preparada, mostra só a logo
+        // (flutuando suave) — nada de vídeo mudo tocando sozinho antes da
+        // voz estar pronta pra entrar junto.
+        <img src="/tuti/Logo.png" alt="TEAjudo" className={`h-32 w-auto${' tea-icon-float'}`} />
+      )}
       {/* Nome por extenso em HTML (não a imagem de Logo.png, que agora é
           usada como a logo do painel principal) — T-E-A (sigla de
           Transtorno do Espectro Autista) cada letra numa cor de
@@ -1862,7 +1882,7 @@ function ChildPanel({
     // vazia embaixo e criando rolagem desnecessária no desktop.
     <div className="max-w-3xl mx-auto px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
-        <img src="/tuti/Logo.png" alt="TEAjudo" className="h-12 w-auto" />
+        <img src="/tuti/Logo.png" alt="TEAjudo" className="h-16 w-auto" />
         <div className="flex gap-2">
           <button onClick={onOpenGames} className="p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm" aria-label="Jogos">
             <PuzzleIcon size={22} />
@@ -2119,7 +2139,10 @@ function TutiBubble({ phrase, tabKey }) {
       localStorage.setItem(visitsKey, String(count));
     } catch (e) {}
 
-    if (count % 4 !== 0) return;
+    // Aparece na 1ª visita da aba, depois a cada 2 visitas (1ª, 3ª, 5ª...)
+    // — decisão explícita do usuário, trocando o padrão anterior (só a
+    // partir da 4ª visita, de 4 em 4).
+    if (count % 2 === 0) return;
     setVisible(true);
 
     let closeTimer;
@@ -3192,6 +3215,7 @@ function ActivitiesView({ onBack, coloringSubjects, wordbuildSubjects, onSavePai
 
   return (
     <div className="max-w-3xl mx-auto px-4 pt-6">
+      <TutiBubble phrase="Vamos criar algo juntos? Escolha uma atividade!" tabKey="atividades" />
       <div className="flex items-center gap-2 mb-6">
         <button onClick={onBack} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
         <h1 className="text-2xl font-bold text-[#B15E3E]">Atividades</h1>

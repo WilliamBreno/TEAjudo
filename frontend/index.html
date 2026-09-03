@@ -3,6 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/tuti/Logo.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/tuti/icon-32.png" />
+    <!-- iOS não lê o manifest pra ícone da tela inicial — precisa desse
+         link específico. icon-180.png já tem fundo opaco (iOS renderiza
+         transparência como preto sólido, então não pode ser o mesmo PNG
+         transparente usado no manifest). -->
+    <link rel="apple-touch-icon" href="/tuti/icon-180.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2F6F62" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TEAjudo" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>TEAjudo</title>
   </head>

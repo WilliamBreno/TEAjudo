@@ -448,6 +448,45 @@ já cai em modo demo (mostra o código na tela) quando o envio real
 falha por qualquer motivo, o login/cadastro nunca ficou bloqueado
 durante a investigação — só a entrega por e-mail de verdade.
 
+## PWA (instalar como app)
+Antes desta seção não existia manifest, service worker, nem nenhum link
+de PWA no `index.html` — "instalar o app" simplesmente não estava
+disponível em lugar nenhum, apesar dos ícones (`frontend/public/tuti/
+icon-32.png`, `icon-180.png`, `icon-192.png`, `icon-512.png`) já
+existirem prontos. Agora:
+
+- `frontend/public/manifest.webmanifest` — `name`/`short_name`
+  "TEAjudo", `display: "standalone"`, `background_color: "#FAF7F2"`,
+  `theme_color: "#2F6F62"`, ícones 32/192/512. Referenciado no
+  `index.html` via `<link rel="manifest" ...>`.
+- `frontend/public/sw.js` — service worker **mínimo de propósito**: só
+  existe pra satisfazer o critério de instalabilidade do Chrome/Edge/
+  Android (que exigem um service worker registrado com handler de
+  `fetch`, além do manifest, pra oferecer "Instalar app"). Não faz
+  cache nem funciona offline **de propósito** — o app depende de dados
+  sempre atualizados (login, assinatura, TTS), cachear agressivamente
+  aqui criaria bugs de conteúdo desatualizado sem o app ter pedido
+  suporte offline. Registrado em `main.jsx` via
+  `navigator.serviceWorker.register('/sw.js')`, dentro de
+  `window.addEventListener('load', ...)`.
+- `apple-touch-icon` aponta pro `icon-180.png` (não pro mesmo PNG
+  transparente usado no manifest) — **iOS não lê o manifest pra decidir
+  o ícone da tela inicial**, precisa desse link específico, e renderiza
+  transparência como preto sólido, então esse ícone tem fundo opaco
+  (`#BFE3F7`-ish, gerado assim de propósito) em vez de transparente.
+  `apple-mobile-web-app-capable`/`mobile-web-app-capable` (modo
+  standalone, sem a barra do navegador, ao abrir pela tela inicial) e
+  `apple-mobile-web-app-title` (nome mostrado embaixo do ícone no iOS)
+  completam o suporte.
+- Testado (Playwright, `vite preview` local): service worker registra e
+  fica `active`, manifest carrega com o conteúdo esperado,
+  `apple-touch-icon` aponta pro arquivo certo. O prompt de instalação
+  em si (`beforeinstallprompt`, botão "Instalar" na barra de endereço do
+  Chrome/Edge) depende de heurísticas do navegador que não são 100%
+  reproduzíveis via automação — a instalabilidade (os requisitos
+  técnicos) está confirmada; a aparição do prompt em si varia por
+  navegador/plataforma/histórico de visitas.
+
 ## Assinatura via InfinitePay (Fase 2)
 R$29,90/mês, cobrado pelo Checkout Integrado da InfinitePay
 (`https://api.checkout.infinitepay.io`). Documentação oficial:
@@ -617,47 +656,69 @@ dispositivos). Abaixo do vídeo, "TEAjudo" em texto HTML (não `Logo.png`,
 que virou a logo do `ChildPanel`) — cores exatas pedidas pelo usuário:
 T vermelho (`#C0605A`, já usado no resto do app pra "perigo"/exclusão),
 E azul (`CATEGORY_META.sentimentos`), A verde (`CATEGORY_META.acoes`),
-"judo" amarelo (`CATEGORY_META.pessoas`). Toca o vídeo (mudo, `autoPlay`) e sintetiza a fala
-("Olá, sou o Tuti, assistente virtual de {childName}!") via
-`getOrSynthesizeAudio` — mesmo cache de áudio dos botões
-(`teajudo:audio-cache`), só que endereçado por uma chave própria
-(`welcome:{childName}`) em vez do id do botão. Fecha sozinha ~800ms
-depois do que terminar por último entre vídeo e áudio (o vídeo já para
-no último frame sozinho, comportamento nativo do `<video>` sem `loop`);
-se a síntese de voz falhar (backend fora do ar/não configurado), a tela
-não trava esperando um áudio que nunca chega — segue só com o vídeo. Se o
-navegador bloquear o autoplay do áudio (comum: o `play()` acontece depois
-de um `await`, fora da janela de "gesto do usuário" — bem mais frequente
-em mobile), mostra um botão "Tocar a voz do Tuti" pra iniciar manualmente
-em vez de falhar em silêncio (`playAudioBase64` aceita um callback
-`onBlocked` à parte do `onEnd` justamente pra isso). Tem um botão "Pular"
-sempre visível.
+"judo" amarelo (`CATEGORY_META.pessoas`).
+
+**Estado `ready`: a tela só passa a mostrar vídeo/tentar tocar a voz
+depois que a síntese de áudio já resolveu (sucesso ou falha)** —
+decisão explícita do usuário, pra vídeo e voz sempre começarem juntos,
+sem aquele instante de vídeo mudo tocando sozinho enquanto a voz ainda
+carrega em segundo plano (antes o `<video autoPlay>` começava assim que
+o componente montava, independente do áudio). Antes de `ready`, mostra
+só a logo (`Logo.png`, flutuando suave via `.tea-icon-float`), sem
+tentar reproduzir nada ainda. Assim que `getOrSynthesizeAudio` resolve
+(ou falha — `audioUnavailable`), `ready` vira `true` num único efeito
+que dispara `video.play()` e (se tiver áudio) `playAudioBase64(...)`
+**ao mesmo tempo**. Fecha sozinha ~800ms depois do que terminar por
+último entre vídeo e áudio (o vídeo já para no último frame sozinho,
+comportamento nativo do `<video>` sem `loop`); se a síntese de voz
+falhar, a tela não trava esperando um áudio que nunca chega — segue só
+com o vídeo. Tem um botão "Pular" sempre visível, mesmo antes de
+`ready`.
+
+**Isso reduz, mas não elimina, o botão manual de tocar a voz** — se o
+navegador bloquear o autoplay do áudio, mostra "Tocar a voz do Tuti"
+pra iniciar manualmente (`playAudioBase64` aceita um callback
+`onBlocked` à parte do `onEnd` justamente pra isso). Bloqueio de
+autoplay é sobre ter ou não um **gesto recente do usuário**, não sobre
+o áudio "estar pronto" — mostrar a tela mais tarde não muda isso. É bem
+mais raro logo após criar conta/logar (o clique em "Criar conta"/
+"Entrar" já conta como gesto), e continua comum ao **recarregar a
+página** sem nenhum toque anterior (confirmado meio a Playwright contra
+produção: autoplay funciona liso após criar conta, mas cai no botão
+manual após um `reload()` puro, mesmo em Chromium desktop — pior ainda
+em Safari/iOS). Não existe forma de contornar isso via código; é
+proteção do próprio navegador contra sites barulhentos.
 
 Enquanto `audioBlocked` for `true`, a tela **não fecha sozinha** (nem
 pelo timer de 800ms depois do vídeo acabar, nem pela rede de segurança de
-15s) — antes fechava, porque o vídeo mudo quase nunca é bloqueado e
-terminava sozinho enquanto o áudio ainda esperava o toque; quem apertava
-"Tocar a voz do Tuti" depois disso ouvia só a voz solta, sem a
-apresentação (vídeo já tinha acabado, às vezes a tela já tinha até
-fechado). `handleTapToPlayAudio` agora reinicia o vídeo do zero
-(`currentTime = 0` + `play()`) junto de tocar o áudio, pra voz e
-apresentação sempre andarem juntas.
+15s, que só passa a contar a partir de `ready`) — antes fechava, porque
+o vídeo mudo quase nunca é bloqueado e terminava sozinho enquanto o
+áudio ainda esperava o toque; quem apertava "Tocar a voz do Tuti"
+depois disso ouvia só a voz solta, sem a apresentação (vídeo já tinha
+acabado, às vezes a tela já tinha até fechado). `handleTapToPlayAudio`
+reinicia o vídeo do zero (`currentTime = 0` + `play()`) junto de tocar
+o áudio, pra voz e apresentação sempre andarem juntas.
 
 `TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
-arquitetado pra qualquer aba que não seja o `ChildPanel`, hoje só usado
-em `GamesView`; uma aba nova no futuro só precisa renderizar
-`<TutiBubble tabKey="..." phrase="..." />` pra ganhar o mesmo
-comportamento) — personagem ancorado no canto inferior direito
+arquitetado pra qualquer aba que não seja o `ChildPanel`; usado em
+`GamesView` e `ActivitiesView`, uma aba nova no futuro só precisa
+renderizar `<TutiBubble tabKey="..." phrase="..." />` pra ganhar o
+mesmo comportamento) — personagem ancorado no canto inferior direito
 (`position: fixed`, sem cartão/fundo atrás) com um balão de fala,
 entrada única (`.tea-fadein`, já existia pro resto do app — reaproveitada
 em vez de criar uma keyframe nova) e fechamento automático ~4s depois do
 áudio (ou na hora, se tocar nela ou no X). Frequência: contador por aba
 em `localStorage` (`teajudo:tuti-bubble-visits:<tabKey>`, não
 `sessionStorage` — precisa sobreviver entre sessões), incrementado a
-cada entrada na aba; só renderiza a bolha na 4ª, 8ª, 12ª... visita
-(`contador % 4 === 0`) — decisão explícita do usuário, pra não virar um
-elemento repetitivo toda vez. O `ChildPanel` nunca renderiza esse
-componente, então "voltar pro painel" nunca conta como visita de
+cada entrada na aba; renderiza a bolha na **1ª visita, depois a cada 2**
+(1ª, 3ª, 5ª...) — `contador % 2 !== 0` — decisão explícita do usuário
+(trocou de "só a partir da 4ª, de 4 em 4"), pra aparecer logo de cara
+mas sem virar um elemento repetitivo toda vez. **Nota de teste**: em
+`npm run dev` (React `StrictMode`), o efeito roda 2x por visita real,
+dobrando o contador (2, 4, 6...) — artefato só do modo dev, não existe
+em produção; testar essa lógica precisa ser contra `vite preview` ou
+produção de verdade, não o dev server. O `ChildPanel` nunca renderiza
+esse componente, então "voltar pro painel" nunca conta como visita de
 nenhuma aba.
 
 Figuras dos jogos (`BUILTIN_PUZZLE_SUBJECTS`) — fotos reais em

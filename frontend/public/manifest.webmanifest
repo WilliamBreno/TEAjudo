@@ -1,0 +1,17 @@
+{
+  "name": "TEAjudo",
+  "short_name": "TEAjudo",
+  "description": "Comunicação Aumentativa e Alternativa (CAA) para crianças autistas",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FAF7F2",
+  "theme_color": "#2F6F62",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/tuti/icon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/tuti/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/tuti/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
