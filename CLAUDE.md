@@ -205,6 +205,13 @@ async function saveJSON(key, value) {
   Itens: `{ts, level, relation, pairCount, timeSeconds, errors,
   completed}` — `errors` (tentativas erradas) decide se o próximo nível
   libera (ver `GamesView`, "bom desempenho" = `errors <= pairCount`)
+- `teajudo:coloring-subjects` — figuras em arte de linha (contorno
+  preto, cadastradas em `GamesManager` → `ColoringManager`) pra
+  atividade de pintura: `{key, label, imageData}`
+- `teajudo:paintings` — últimas 100 pinturas concluídas (canvas
+  achatado numa imagem só, base + o que a criança pintou por cima):
+  `{id, ts, subjectLabel, imageData}` — exibidas na "Galeria de
+  pinturas" dentro da aba Análise
 - `teajudo:puzzle-subjects` — figuras personalizadas (fotos) adicionadas
   pelos pais: `{key, label, imageData}`. Somadas às figuras embutidas
   (`BUILTIN_PUZZLE_SUBJECTS`, fotos reais em `frontend/public/game-subjects/`
@@ -687,6 +694,71 @@ escuro: `AuthGate`, `ChildPanel`, as 4 abas da Área dos pais (Botões,
 Jogos, Configurações, Análise — gráficos do Recharts incluídos) e a
 tela de seleção de Jogos da criança — sem regressão no tema claro.
 
+## Aba Atividades (pintura, escrita livre, caligrafia)
+Terceiro ícone no cabeçalho do `ChildPanel` (`onOpenActivities`, ícone
+`Palette` da lucide-react), entre Jogos e a Área dos pais — `view:
+'activities'` em `TEAjudoApp`, componente `ActivitiesView`. Segue a
+mesma tela de "pausa gentil, sem punição" do resto do app: nenhuma das
+três atividades tem erro que trava ou pontuação — são prática livre.
+
+**Pintura** (`PaintingBoard`) — repertório de figuras em arte de linha
+cadastrado à parte em `GamesManager` → `ColoringManager` (contorno
+preto, áreas internas claras; uma foto comum não funciona bem aqui,
+documentado na própria tela de cadastro). Duas ferramentas:
+- **Pincel**: traço livre contínuo (Pointer Events), ~20px, ponta
+  arredondada, pinta livremente por cima da imagem — pode sair da
+  linha, isso é esperado (expressão livre, não teste de coordenação).
+- **Balde** (`floodFillCanvas`): preenche por contiguidade via **BFS
+  com fila** (não recursivo — evita estourar a pilha numa figura
+  grande), tolerância de cor 30 (distância euclidiana ao quadrado dos
+  canais RGB) a partir do pixel tocado. Os contornos pretos da arte de
+  linha funcionam como limite natural do preenchimento — qualquer pixel
+  que já difira demais da cor inicial vira uma "parede", sem precisar
+  de lógica extra pra "detectar contorno". A tolerância existe pra
+  absorver o anti-aliasing das bordas (pixels em meio-tom entre o preto
+  do contorno e a cor de dentro); testado com uma arte sintética de
+  dois círculos concêntricos — confirmado que o balde preenche só o
+  anel tocado, sem vazar pro círculo interno nem pra fora.
+
+"Limpar" redesenha a imagem original (guardada num `<img>` carregado à
+parte, nunca perdida) — só apaga o que foi pintado por cima, não a
+arte-base. "Concluir pintura" achata o canvas inteiro (base + pintura)
+numa imagem só via `canvas.toDataURL('image/png')` e salva em
+`teajudo:paintings`; a "Galeria de pinturas" (dentro da aba Análise,
+`Analytics`) mostra as mais recentes primeiro, com data, e abre em
+modal ao tocar.
+
+**Escrita livre** (`FreeWritingBoard`) — reaproveita o repertório de
+palavras do Formar a Palavra (`wordbuildSubjects`); mostra a
+palavra/imagem e um canvas em branco tipo assinatura, traço livre
+contínuo (Pointer Events), sem correção nem pontuação. "Limpar" e
+"Próxima palavra" (cicla pro próximo item do repertório, limpando o
+canvas sozinho). Sem galeria/registro aqui — só a pintura salva.
+
+**Caligrafia** (`CalligraphyBoard`) — funciona com **qualquer** palavra
+já cadastrada, sem precisar de arte pronta por letra: desenha a palavra
+na hora, num canvas, com `ctx.setLineDash([6, 6])` antes de
+`ctx.strokeText()` pra criar o contorno tracejado (fonte arredondada,
+`bold 64px 'Atkinson Hyperlegible'`). A criança traça por cima com o
+dedo (Pointer Events, traço sólido numa cor contrastante) — as duas
+camadas (contorno tracejado + traço da criança) coexistem no mesmo
+canvas, redesenhado do zero (`drawGuide`) só quando troca de palavra ou
+aperta "reiniciar". Conclusão é só um botão ("Concluí!") acionado pela
+própria criança/cuidador, dispara confete — **sem validar precisão do
+traçado**, é prática, não teste.
+
+As três atividades compartilham utilitários pequenos e reaproveitáveis:
+`getCanvasPoint` (converte coordenadas de tela pra coordenadas internas
+do canvas, necessário porque o canvas é redimensionado por CSS mas tem
+resolução interna fixa — `ACTIVITY_CANVAS_SIZE = 360`) e
+`drawImageContained` (desenha uma imagem inteira, sem cortar, dentro do
+canvas — diferente do modo "cover" que `makePuzzleImageFromPhoto` já
+usava pro quebra-cabeça).
+
+Testado de ponta a ponta com Playwright, incluindo uma arte de linha
+sintética gerada só pro teste (dois círculos concêntricos) pra
+confirmar que o balde de tinta respeita os limites de verdade.
+
 ## Decisões de design (não reverter sem motivo forte)
 Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 
@@ -813,6 +885,12 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   balança os dois itens e desfaz sozinho (`.tea-shake`), sem nenhuma
   penalidade — mesmo espírito de "erro não trava nem pune" do resto do
   app.
+- **As três atividades (pintura, escrita livre, caligrafia) são prática
+  livre, nunca teste** — nenhuma delas valida precisão, pontua ou
+  trava em erro (ver seção "Aba Atividades" acima). A caligrafia em
+  particular nunca compara o traço da criança com o contorno — "Concluí"
+  é um botão que só a própria pessoa aciona quando ela (ou o cuidador)
+  decide que terminou.
 - **Motion.dev / Magic UI / React Bits não estavam disponíveis** no
   ambiente de artifact original — os efeitos (`tea-popin`, `tea-fadein`,
   `tea-pulse-ring`, `tea-shimmer-btn`, confete, o gloss/reflexo estático
@@ -857,6 +935,11 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 | Jogo da memória (mostra e depois vira para achar os pares) | `MemoryBoard` |
 | Formar a palavra (copiar arrastando letras, apoio visual sempre visível) | `WordBuildBoard` |
 | Ligar os itens (discriminação, hierarquia VB-MAPP, arraste desenha linha) | `MatchLinesBoard` |
+| Escolha de atividade (pintura, escrita livre, caligrafia) | `ActivitiesView` |
+| Pintura de figuras (pincel ou balde/flood fill) | `PaintingBoard` |
+| Escrita livre (traço contínuo, sem correção) | `FreeWritingBoard` |
+| Caligrafia (contorno tracejado gerado na hora + traço por cima) | `CalligraphyBoard` |
+| Repertório de figuras para colorir (arte de linha) | `ColoringManager` (dentro de `GamesManager`) |
 | Confete ao concluir | `ConfettiBurst` |
 | Portão da área dos pais (PIN) | `ParentGate` |
 | Configuração de segurança (e-mail → código → novo PIN, via backend) | `SecuritySetup` |

@@ -4,7 +4,7 @@ import {
   Puzzle as PuzzleIcon, Sparkles, Mail, CreditCard, RefreshCw,
   Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
   ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
-  Heart, Star, Sun, Moon, Volume2, Bed, Tv,
+  Heart, Star, Sun, Moon, Volume2, Bed, Tv, Palette, Paintbrush, PaintBucket, Eraser,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -586,6 +586,95 @@ function makePuzzleImageFromPhoto(imageData) {
   });
 }
 
+// Carrega uma imagem (base64 ou caminho público) num <canvas> em modo
+// "contain" (a imagem inteira cabe dentro do quadrado, sem cortar —
+// diferente do "cover" de makePuzzleImageFromPhoto acima), centralizada,
+// sobre fundo branco. Usado pela pintura: a figura de arte de linha
+// precisa aparecer inteira, sem recorte, senão parte do contorno some.
+function drawImageContained(ctx, img, canvasW, canvasH) {
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+  const scale = Math.min(canvasW / img.width, canvasH / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  ctx.drawImage(img, (canvasW - w) / 2, (canvasH - h) / 2, w, h);
+}
+
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Converte a posição do ponteiro (coordenadas da tela) pra coordenadas
+// internas do canvas — necessário porque o canvas é redimensionado por
+// CSS (responsivo) mas mantém uma resolução interna fixa.
+function getCanvasPoint(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+
+function hexToRgbTuple(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+// Balde de tinta: preenche por contiguidade (BFS, fila — não recursivo,
+// pra nunca estourar a pilha numa figura grande) a partir do pixel
+// tocado, respeitando os contornos pretos da arte de linha como limite
+// (qualquer pixel que já difira o bastante da cor inicial vira uma
+// "parede" natural do preenchimento — não precisa de lógica extra pra
+// "detectar contorno"). Tolerância ~30 absorve o anti-aliasing das
+// bordas (pixels meio-tom entre o preto do contorno e o branco/cor de
+// dentro), senão o preenchimento pararia cedo demais bem na borda.
+function floodFillCanvas(ctx, canvasW, canvasH, startX, startY, fillHex, tolerance = 30) {
+  const imageData = ctx.getImageData(0, 0, canvasW, canvasH);
+  const data = imageData.data;
+  const sx = Math.floor(startX), sy = Math.floor(startY);
+  if (sx < 0 || sy < 0 || sx >= canvasW || sy >= canvasH) return;
+  const startIdx = (sy * canvasW + sx) * 4;
+  const startR = data[startIdx], startG = data[startIdx + 1], startB = data[startIdx + 2];
+  const [fr, fg, fb] = hexToRgbTuple(fillHex);
+  // já é a cor de preenchimento — nada a fazer
+  if (Math.abs(startR - fr) < 4 && Math.abs(startG - fg) < 4 && Math.abs(startB - fb) < 4) return;
+
+  const tol2 = tolerance * tolerance;
+  function matchesStart(idx) {
+    const dr = data[idx] - startR, dg = data[idx + 1] - startG, db = data[idx + 2] - startB;
+    return dr * dr + dg * dg + db * db <= tol2;
+  }
+
+  const visited = new Uint8Array(canvasW * canvasH);
+  const queue = new Int32Array(canvasW * canvasH * 2);
+  let head = 0, tail = 0;
+  queue[tail++] = sx; queue[tail++] = sy;
+  visited[sy * canvasW + sx] = 1;
+
+  while (head < tail) {
+    const x = queue[head++]; const y = queue[head++];
+    const idx = (y * canvasW + x) * 4;
+    data[idx] = fr; data[idx + 1] = fg; data[idx + 2] = fb; data[idx + 3] = 255;
+    const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+    for (const [nx, ny] of neighbors) {
+      if (nx < 0 || ny < 0 || nx >= canvasW || ny >= canvasH) continue;
+      const npos = ny * canvasW + nx;
+      if (visited[npos]) continue;
+      const nidx = npos * 4;
+      if (!matchesStart(nidx)) continue;
+      visited[npos] = 1;
+      queue[tail++] = nx; queue[tail++] = ny;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+const PAINT_PALETTE = ['#C0605A', '#E08A3C', '#E4A93B', '#4C9A6A', '#3E7CB1', '#8B6BB1', '#D66E96', '#6B4226', '#2B2B2B', '#FFFFFF'];
+
 function shuffledArray(n) {
   const arr = Array.from({ length: n }, (_, i) => i);
   if (n <= 1) return arr;
@@ -809,6 +898,8 @@ export default function TEAjudoApp() {
   const [wordbuildResults, setWordbuildResults] = useState([]);
   const [matchlinesSubjects, setMatchlinesSubjects] = useState([]);
   const [matchlinesResults, setMatchlinesResults] = useState([]);
+  const [coloringSubjects, setColoringSubjects] = useState([]);
+  const [paintings, setPaintings] = useState([]);
   const [audioCache, setAudioCache] = useState({});
   const [showBreak, setShowBreak] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState('');
@@ -840,7 +931,7 @@ export default function TEAjudoApp() {
 
   useEffect(() => {
     (async () => {
-      const [b, s, l, p, m, cs, ac, du, wbs, wbr, mls, mlr] = await Promise.all([
+      const [b, s, l, p, m, cs, ac, du, wbs, wbr, mls, mlr, cols, pnt] = await Promise.all([
         loadJSON('teajudo:buttons', DEFAULT_BUTTONS),
         loadJSON('teajudo:settings', DEFAULT_SETTINGS),
         loadJSON('teajudo:logs', []),
@@ -853,6 +944,8 @@ export default function TEAjudoApp() {
         loadJSON('teajudo:wordbuild-results', []),
         loadJSON('teajudo:matchlines-subjects', []),
         loadJSON('teajudo:matchlines-results', []),
+        loadJSON('teajudo:coloring-subjects', []),
+        loadJSON('teajudo:paintings', []),
       ]);
       setButtons(b);
       // 'fluido' foi removido — qualquer valor salvo que não seja 'tatil'
@@ -882,6 +975,8 @@ export default function TEAjudoApp() {
       setWordbuildResults(wbr);
       setMatchlinesSubjects(mls);
       setMatchlinesResults(mlr);
+      setColoringSubjects(cols);
+      setPaintings(pnt);
       setAudioCache(ac);
       setLoading(false);
       // guarda o uso do dia numa ref simples via storage já carregado
@@ -975,6 +1070,19 @@ export default function TEAjudoApp() {
     setMatchlinesResults((prev) => {
       const next = [...prev, entry].slice(-200);
       saveJSON('teajudo:matchlines-results', next);
+      return next;
+    });
+  }, []);
+
+  const persistColoringSubjects = useCallback((next) => {
+    setColoringSubjects(next);
+    saveJSON('teajudo:coloring-subjects', next);
+  }, []);
+
+  const addPainting = useCallback((entry) => {
+    setPaintings((prev) => {
+      const next = [...prev, entry].slice(-100);
+      saveJSON('teajudo:paintings', next);
       return next;
     });
   }, []);
@@ -1080,7 +1188,7 @@ export default function TEAjudoApp() {
         <BreakOverlay pin={settings.pin} onContinue={() => setShowBreak(false)} />
       )}
 
-      {(view === 'panel' || view === 'games') && isBlocked && (
+      {(view === 'panel' || view === 'games' || view === 'activities') && isBlocked && (
         <RegularizationScreen
           onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
         />
@@ -1094,6 +1202,7 @@ export default function TEAjudoApp() {
           voiceNotice={voiceNotice}
           readinessReady={!!readiness?.ready}
           onOpenGames={() => setView('games')}
+          onOpenActivities={() => setView('activities')}
           onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
@@ -1115,6 +1224,15 @@ export default function TEAjudoApp() {
           matchlinesSubjects={matchlinesSubjects}
           matchlinesResults={matchlinesResults}
           onPlayPhrase={playPhrase}
+        />
+      )}
+
+      {view === 'activities' && !isBlocked && (
+        <ActivitiesView
+          onBack={() => setView('panel')}
+          coloringSubjects={coloringSubjects}
+          wordbuildSubjects={wordbuildSubjects}
+          onSavePainting={addPainting}
         />
       )}
 
@@ -1176,6 +1294,9 @@ export default function TEAjudoApp() {
           matchlinesSubjects={matchlinesSubjects}
           onSaveMatchlinesSubjects={persistMatchlinesSubjects}
           matchlinesResults={matchlinesResults}
+          coloringSubjects={coloringSubjects}
+          onSaveColoringSubjects={persistColoringSubjects}
+          paintings={paintings}
           readiness={readiness}
           onRequestPinChange={() => {
             setSecurityMode('change');
@@ -1684,7 +1805,7 @@ function RegularizationScreen({ onOpenParentGate }) {
 /* ---------- Painel principal (criança) ---------- */
 
 function ChildPanel({
-  buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenParentGate,
+  buttons, onPlay, playingId, voiceNotice, readinessReady, onOpenGames, onOpenActivities, onOpenParentGate,
   buttonStyle, reduceMotion, theme, onChangeStyle,
 }) {
   const [filter, setFilter] = useState('todos');
@@ -1718,6 +1839,9 @@ function ChildPanel({
         <div className="flex gap-2">
           <button onClick={onOpenGames} className="p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm" aria-label="Jogos">
             <PuzzleIcon size={22} />
+          </button>
+          <button onClick={onOpenActivities} className="p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm" aria-label="Atividades">
+            <Palette size={22} />
           </button>
           <button onClick={onOpenParentGate} className="relative p-3 rounded-2xl bg-white border border-[#EADFCB] shadow-sm" aria-label="Área dos pais">
             <Lock size={22} />
@@ -2977,6 +3101,433 @@ function ConfettiBurst() {
   );
 }
 
+/* ---------- Aba Atividades (pintura, escrita livre, caligrafia) ---------- */
+// As três seguem a mesma filosofia "sem pressão" do resto do app: sem
+// erro que trava, sem pontuação penalizante — são prática livre, não
+// teste.
+const ACTIVITY_CANVAS_SIZE = 360;
+
+function ActivitiesView({ onBack, coloringSubjects, wordbuildSubjects, onSavePainting }) {
+  const [activityType, setActivityType] = useState(null); // null | 'painting' | 'writing' | 'calligraphy'
+  const [paintSubject, setPaintSubject] = useState(null);
+
+  if (activityType === 'painting' && paintSubject) {
+    return (
+      <PaintingBoard
+        subject={paintSubject}
+        onExit={() => setPaintSubject(null)}
+        onSave={onSavePainting}
+      />
+    );
+  }
+
+  if (activityType === 'writing') {
+    return <FreeWritingBoard subjects={wordbuildSubjects} onExit={() => setActivityType(null)} />;
+  }
+
+  if (activityType === 'calligraphy') {
+    return <CalligraphyBoard subjects={wordbuildSubjects} onExit={() => setActivityType(null)} />;
+  }
+
+  if (activityType === 'painting') {
+    // escolher a figura antes de abrir o quadro de pintura
+    return (
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+        <div className="flex items-center gap-2 mb-5">
+          <button onClick={() => setActivityType(null)} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+          <h1 className="text-2xl font-bold text-[#B15E3E]">Pintura</h1>
+        </div>
+        {coloringSubjects.length === 0 ? (
+          <p className="text-[#5A5A5A]">
+            Nenhuma figura cadastrada ainda — peça pra um adulto adicionar figuras na Área dos
+            pais, aba Jogos.
+          </p>
+        ) : (
+          <>
+            <p className="text-[#5A5A5A] mb-4">Escolha uma figura:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {coloringSubjects.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setPaintSubject(s)}
+                  className="bg-white border-2 border-[#EADFCB] rounded-2xl p-2 hover:border-[#B15E3E] transition-colors"
+                >
+                  <img src={s.imageData} alt={s.label} className="w-full aspect-square object-contain bg-[#F8F3FC] rounded-xl mb-1" />
+                  <span className="text-xs font-bold text-[#B15E3E]">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 pt-6">
+      <div className="flex items-center gap-2 mb-6">
+        <button onClick={onBack} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <h1 className="text-2xl font-bold text-[#B15E3E]">Atividades</h1>
+      </div>
+      <div className="grid sm:grid-cols-3 gap-4">
+        <button
+          onClick={() => setActivityType('painting')}
+          className="tea-popin bg-white border-2 border-[#EADFCB] rounded-3xl p-6 text-center shadow-sm hover:border-[#B15E3E] transition-colors"
+        >
+          <div className="text-5xl mb-3">🎨</div>
+          <div className="font-bold text-lg text-[#B15E3E]">Pintura</div>
+          <p className="text-sm text-[#999] mt-1">Pinte figuras com pincel ou balde</p>
+        </button>
+        <button
+          onClick={() => setActivityType('writing')}
+          className="tea-popin bg-white border-2 border-[#EADFCB] rounded-3xl p-6 text-center shadow-sm hover:border-[#3E7CB1] transition-colors"
+          style={{ animationDelay: '60ms' }}
+        >
+          <div className="text-5xl mb-3">✍️</div>
+          <div className="font-bold text-lg text-[#3E7CB1]">Escrita livre</div>
+          <p className="text-sm text-[#999] mt-1">Pratique escrever com o dedo</p>
+        </button>
+        <button
+          onClick={() => setActivityType('calligraphy')}
+          className="tea-popin bg-white border-2 border-[#EADFCB] rounded-3xl p-6 text-center shadow-sm hover:border-[#4C9A6A] transition-colors"
+          style={{ animationDelay: '120ms' }}
+        >
+          <div className="text-5xl mb-3">🖊️</div>
+          <div className="font-bold text-lg text-[#4C9A6A]">Caligrafia</div>
+          <p className="text-sm text-[#999] mt-1">Trace por cima da palavra pontilhada</p>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Pintura: pincel (traço livre) ou balde (flood fill BFS, ver
+// floodFillCanvas). "Limpar" redesenha a imagem original guardada em
+// imgRef — nunca perde a arte-base, só o que foi pintado por cima.
+function PaintingBoard({ subject, onExit, onSave }) {
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
+  const [tool, setTool] = useState('brush'); // 'brush' | 'bucket'
+  const [color, setColor] = useState(PAINT_PALETTE[0]);
+  const [saved, setSaved] = useState(false);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSaved(false);
+    loadImageEl(subject.imageData).then((img) => {
+      if (cancelled) return;
+      imgRef.current = img;
+      const ctx = canvasRef.current.getContext('2d');
+      drawImageContained(ctx, img, ACTIVITY_CANVAS_SIZE, ACTIVITY_CANVAS_SIZE);
+    });
+    return () => { cancelled = true; };
+  }, [subject.key]);
+
+  function handlePointerDown(e) {
+    const canvas = canvasRef.current;
+    canvas.setPointerCapture(e.pointerId);
+    const p = getCanvasPoint(e, canvas);
+    const ctx = canvas.getContext('2d');
+    if (tool === 'bucket') {
+      floodFillCanvas(ctx, ACTIVITY_CANVAS_SIZE, ACTIVITY_CANVAS_SIZE, p.x, p.y, color);
+      return;
+    }
+    drawingRef.current = true;
+    lastPointRef.current = p;
+    // toque simples (sem arrastar) também pinta uma bolinha, não só o arraste
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function handlePointerMove(e) {
+    if (!drawingRef.current || tool !== 'brush') return;
+    const canvas = canvasRef.current;
+    const p = getCanvasPoint(e, canvas);
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 20;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastPointRef.current = p;
+  }
+
+  function handlePointerUp() {
+    drawingRef.current = false;
+  }
+
+  function handleClear() {
+    if (!imgRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    drawImageContained(ctx, imgRef.current, ACTIVITY_CANVAS_SIZE, ACTIVITY_CANVAS_SIZE);
+  }
+
+  function handleFinish() {
+    const dataUrl = canvasRef.current.toDataURL('image/png');
+    onSave({ id: 'paint-' + Date.now(), ts: Date.now(), subjectLabel: subject.label, imageData: dataUrl });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <div className="text-sm font-semibold text-[#5A5A5A]">{subject.label}</div>
+        <button onClick={handleClear} className="p-2 rounded-xl bg-white border border-[#EADFCB]" aria-label="Limpar"><Eraser size={18} /></button>
+      </div>
+
+      <div className="flex gap-2 mb-3 justify-center">
+        <button
+          onClick={() => setTool('brush')}
+          className={`px-3 py-2 rounded-xl text-sm font-semibold border flex items-center gap-2 transition-all duration-200 ${tool === 'brush' ? 'bg-[#B15E3E] text-white border-[#B15E3E]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+        >
+          <Paintbrush size={16} /> Pincel
+        </button>
+        <button
+          onClick={() => setTool('bucket')}
+          className={`px-3 py-2 rounded-xl text-sm font-semibold border flex items-center gap-2 transition-all duration-200 ${tool === 'bucket' ? 'bg-[#B15E3E] text-white border-[#B15E3E]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+        >
+          <PaintBucket size={16} /> Balde
+        </button>
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        width={ACTIVITY_CANVAS_SIZE}
+        height={ACTIVITY_CANVAS_SIZE}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="touch-none w-full aspect-square rounded-2xl border-4 border-white shadow-md mb-3 bg-white"
+      />
+
+      <div className="flex flex-wrap gap-2 justify-center mb-4">
+        {PAINT_PALETTE.map((c) => (
+          <button
+            key={c}
+            onClick={() => setColor(c)}
+            aria-label={c}
+            className={`w-9 h-9 rounded-full border-2 transition-transform duration-150 ${color === c ? 'scale-110 border-[#2B2B2B]' : 'border-white'}`}
+            style={{ backgroundColor: c, boxShadow: '0 0 0 1px #DDD' }}
+          />
+        ))}
+      </div>
+
+      <button
+        onClick={handleFinish}
+        className="tea-shimmer-btn w-full bg-[#B15E3E] text-white rounded-xl px-4 py-3 font-semibold transition-transform active:scale-95"
+      >
+        {saved ? 'Pintura salva na galeria! ✓' : 'Concluir pintura'}
+      </button>
+    </div>
+  );
+}
+
+// Escrita livre: sem correção nem pontuação, só prática de traçado
+// contínuo com o dedo — mostra a palavra/imagem (reaproveita o
+// repertório do Formar a Palavra) e um campo tipo assinatura embaixo.
+function FreeWritingBoard({ subjects, onExit }) {
+  const [index, setIndex] = useState(0);
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef(null);
+  const subject = subjects[index];
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  useEffect(() => { clearCanvas(); }, [index]);
+
+  function handlePointerDown(e) {
+    const canvas = canvasRef.current;
+    canvas.setPointerCapture(e.pointerId);
+    drawingRef.current = true;
+    lastPointRef.current = getCanvasPoint(e, canvas);
+  }
+  function handlePointerMove(e) {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    const p = getCanvasPoint(e, canvas);
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#2F6F62';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastPointRef.current = p;
+  }
+  function handlePointerUp() { drawingRef.current = false; }
+
+  function handleNext() {
+    setIndex((i) => (i + 1) % subjects.length);
+  }
+
+  if (!subject) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-6 text-center">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB] mb-4"><ChevronLeft size={20} /></button>
+        <p className="text-[#5A5A5A]">
+          Nenhuma palavra cadastrada ainda — peça pra um adulto adicionar palavras na Área dos
+          pais, aba Jogos (repertório do jogo Formar a Palavra).
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <div className="text-sm font-semibold text-[#5A5A5A]">Escrita livre</div>
+        <div className="w-9" />
+      </div>
+
+      <div className="flex flex-col items-center gap-2 mb-4">
+        {subject.iconVariant === 'foto'
+          ? <img src={subject.imageData} alt={subject.word} className="w-20 h-20 object-cover rounded-2xl border-4 border-white shadow-sm" />
+          : <span className="text-5xl">{subject.emoji}</span>}
+        <div className="text-2xl font-extrabold tracking-widest text-[#3E7CB1]">{subject.word.toUpperCase()}</div>
+      </div>
+
+      <canvas
+        ref={canvasRef}
+        width={ACTIVITY_CANVAS_SIZE}
+        height={180}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="touch-none w-full rounded-2xl border-4 border-white shadow-md mb-4 bg-white"
+        style={{ aspectRatio: `${ACTIVITY_CANVAS_SIZE} / 180` }}
+      />
+
+      <div className="flex gap-2">
+        <button onClick={clearCanvas} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#DDD] text-[#5A5A5A] transition-transform active:scale-95">Limpar</button>
+        <button onClick={handleNext} className="flex-1 tea-shimmer-btn bg-[#3E7CB1] text-white rounded-xl px-4 py-2.5 font-semibold transition-transform active:scale-95">Próxima palavra</button>
+      </div>
+    </div>
+  );
+}
+
+// Caligrafia: desenha a palavra na hora com contorno tracejado
+// (ctx.setLineDash + strokeText — funciona pra qualquer palavra
+// cadastrada, sem precisar de arte pronta por letra) e deixa a criança
+// traçar por cima com o dedo. Conclusão é só um botão acionado pela
+// própria criança/cuidador — sem validar precisão do traçado, é
+// prática, não teste.
+function CalligraphyBoard({ subjects, onExit }) {
+  const [index, setIndex] = useState(0);
+  const [done, setDone] = useState(false);
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef(null);
+  const subject = subjects[index];
+
+  const drawGuide = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !subject) return;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = 'bold 64px "Atkinson Hyperlegible", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#B8BAC2';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.strokeText(subject.word.toUpperCase(), canvas.width / 2, canvas.height / 2);
+    ctx.setLineDash([]);
+  }, [subject]);
+
+  useEffect(() => { setDone(false); drawGuide(); }, [index, drawGuide]);
+
+  function handlePointerDown(e) {
+    const canvas = canvasRef.current;
+    canvas.setPointerCapture(e.pointerId);
+    drawingRef.current = true;
+    lastPointRef.current = getCanvasPoint(e, canvas);
+  }
+  function handlePointerMove(e) {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    const p = getCanvasPoint(e, canvas);
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#C0605A';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastPointRef.current = p;
+  }
+  function handlePointerUp() { drawingRef.current = false; }
+
+  function handleNext() {
+    setIndex((i) => (i + 1) % subjects.length);
+  }
+
+  if (!subject) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-6 text-center">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB] mb-4"><ChevronLeft size={20} /></button>
+        <p className="text-[#5A5A5A]">
+          Nenhuma palavra cadastrada ainda — peça pra um adulto adicionar palavras na Área dos
+          pais, aba Jogos (repertório do jogo Formar a Palavra).
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative max-w-md mx-auto px-4 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <div className="text-sm font-semibold text-[#5A5A5A]">Caligrafia</div>
+        <button onClick={drawGuide} className="p-2 rounded-xl bg-white border border-[#EADFCB]" aria-label="Reiniciar traço"><RotateCcw size={18} /></button>
+      </div>
+      {done && <ConfettiBurst />}
+
+      <p className="text-center text-xs text-[#999] mb-3">Trace por cima da palavra pontilhada com o dedo</p>
+
+      <canvas
+        ref={canvasRef}
+        width={ACTIVITY_CANVAS_SIZE}
+        height={180}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="touch-none w-full rounded-2xl border-4 border-white shadow-md mb-4 bg-white"
+        style={{ aspectRatio: `${ACTIVITY_CANVAS_SIZE} / 180` }}
+      />
+
+      <div className="flex gap-2">
+        <button onClick={handleNext} className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border border-[#DDD] text-[#5A5A5A] transition-transform active:scale-95">Próxima palavra</button>
+        <button onClick={() => setDone(true)} className="flex-1 tea-shimmer-btn bg-[#4C9A6A] text-white rounded-xl px-4 py-2.5 font-semibold transition-transform active:scale-95">Concluí!</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Jogo da memória: mostra por X segundos, depois vira e acha os pares ---------- */
 
 function MemoryBoard({ level, subjects, showTimer, onExit, onFinish }) {
@@ -3367,7 +3918,7 @@ function SubscriptionDueBanner({ onGoToSubscription }) {
   );
 }
 
-function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, wordbuildSubjects, onSaveWordbuildSubjects, wordbuildResults, matchlinesSubjects, onSaveMatchlinesSubjects, matchlinesResults, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
+function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, wordbuildSubjects, onSaveWordbuildSubjects, wordbuildResults, matchlinesSubjects, onSaveMatchlinesSubjects, matchlinesResults, coloringSubjects, onSaveColoringSubjects, paintings, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
   const [tab, setTab] = useState('botoes');
   return (
     <div className="max-w-4xl mx-auto px-4 pt-6">
@@ -3400,6 +3951,8 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
             onSaveWordbuildSubjects={onSaveWordbuildSubjects}
             matchlinesSubjects={matchlinesSubjects}
             onSaveMatchlinesSubjects={onSaveMatchlinesSubjects}
+            coloringSubjects={coloringSubjects}
+            onSaveColoringSubjects={onSaveColoringSubjects}
           />
         )}
         {tab === 'config' && <SettingsPanel settings={settings} onSave={onSaveSettings} onRequestPinChange={onRequestPinChange} responsavel={responsavel} onLogout={onLogout} />}
@@ -3410,6 +3963,7 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
             memoryResults={memoryResults}
             wordbuildResults={wordbuildResults}
             matchlinesResults={matchlinesResults}
+            paintings={paintings}
             buttons={buttons}
             readiness={readiness}
             onGoToButtons={() => setTab('botoes')}
@@ -3420,7 +3974,7 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
   );
 }
 
-function GamesManager({ customSubjects, onSave, wordbuildSubjects, onSaveWordbuildSubjects, matchlinesSubjects, onSaveMatchlinesSubjects }) {
+function GamesManager({ customSubjects, onSave, wordbuildSubjects, onSaveWordbuildSubjects, matchlinesSubjects, onSaveMatchlinesSubjects, coloringSubjects, onSaveColoringSubjects }) {
   const [label, setLabel] = useState('');
   const [imageData, setImageData] = useState(null);
 
@@ -3490,6 +4044,86 @@ function GamesManager({ customSubjects, onSave, wordbuildSubjects, onSaveWordbui
       <div className="h-px bg-[#EADFCB] my-8" />
 
       <MatchLinesManager subjects={matchlinesSubjects} onSave={onSaveMatchlinesSubjects} />
+
+      <div className="h-px bg-[#EADFCB] my-8" />
+
+      <ColoringManager subjects={coloringSubjects} onSave={onSaveColoringSubjects} />
+    </div>
+  );
+}
+
+// Seção separada dentro de GamesManager pra atividade de pintura (aba
+// Atividades) — precisa ser especificamente "arte de linha" (contorno
+// preto, áreas internas claras), não foto comum, porque o balde de
+// tinta (flood fill) usa esses contornos como limite de preenchimento;
+// uma foto comum não teria fronteiras nítidas o bastante.
+function ColoringManager({ subjects, onSave }) {
+  const [label, setLabel] = useState('');
+  const [imageData, setImageData] = useState(null);
+
+  function handleImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImageData(reader.result);
+    reader.readAsDataURL(file);
+  }
+
+  function addSubject() {
+    if (!label.trim() || !imageData) return;
+    const newSubject = { key: 'col-' + Date.now(), label: label.trim(), imageData };
+    onSave([...subjects, newSubject]);
+    setLabel(''); setImageData(null);
+  }
+
+  function removeSubject(key) {
+    onSave(subjects.filter((s) => s.key !== key));
+  }
+
+  return (
+    <div>
+      <div className="bg-white rounded-2xl border-2 border-[#F5D9A8] p-4 mb-6">
+        <h3 className="font-bold mb-1 flex items-center gap-2 text-[#B15E3E]">
+          <Palette size={20} /> Figuras para colorir
+        </h3>
+        <p className="text-sm text-[#5A5A5A] mb-3">
+          Use imagens em <strong>arte de linha</strong> (contorno preto, áreas internas claras/
+          brancas) — o balde de tinta da pintura usa esses contornos como limite pra preencher só
+          a área tocada. Uma foto comum não funciona bem aqui (sem contorno nítido, a tinta
+          "vaza" pra fora da área desejada).
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-3">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nome da figura (ex: Borboleta)" className="border border-[#DDD] rounded-xl px-3 py-2 flex-1 w-full" />
+          <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] cursor-pointer bg-[#F3F0EA] px-3 py-2 rounded-xl whitespace-nowrap">
+            <ImagePlus size={16} /> {imageData ? 'Trocar imagem' : 'Escolher imagem'}
+            <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+          </label>
+        </div>
+        {imageData && (
+          <img src={imageData} alt="preview" className="w-20 h-20 object-contain bg-white rounded-2xl mb-3 border-2 border-[#EADFCB]" />
+        )}
+        <button
+          onClick={addSubject}
+          disabled={!label.trim() || !imageData}
+          className="tea-shimmer-btn bg-[#B15E3E] text-white rounded-xl px-4 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+        >
+          <Plus size={16} /> Adicionar figura
+        </button>
+      </div>
+
+      <h3 className="font-bold mb-3">Figuras cadastradas ({subjects.length})</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {subjects.map((s) => (
+          <div key={s.key} className="bg-white border border-[#EADFCB] rounded-2xl p-3 flex items-center gap-2">
+            <img src={s.imageData} alt={s.label} className="w-12 h-12 object-contain bg-[#F8F3FC] rounded-xl" />
+            <span className="text-sm font-semibold flex-1">{s.label}</span>
+            <button onClick={() => removeSubject(s.key)} className="text-[#C0605A] p-1"><Trash2 size={16} /></button>
+          </div>
+        ))}
+        {subjects.length === 0 && (
+          <p className="text-sm text-[#999] col-span-full">Nenhuma figura cadastrada ainda — adicione figuras acima pra liberar a atividade de pintura.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -4664,7 +5298,8 @@ function ReadinessCard({ readiness, onGoToButtons }) {
   );
 }
 
-function Analytics({ logs, puzzleResults, memoryResults = [], wordbuildResults = [], matchlinesResults = [], buttons, readiness, onGoToButtons }) {
+function Analytics({ logs, puzzleResults, memoryResults = [], wordbuildResults = [], matchlinesResults = [], paintings = [], buttons, readiness, onGoToButtons }) {
+  const [selectedPainting, setSelectedPainting] = useState(null);
   const days = lastNDays(7);
   const dayLabel = (d) => d.slice(5).split('-').reverse().join('/');
 
@@ -4775,6 +5410,44 @@ function Analytics({ logs, puzzleResults, memoryResults = [], wordbuildResults =
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {paintings.length > 0 && (
+        <div className="bg-white rounded-2xl border border-[#EADFCB] p-4">
+          <h3 className="font-bold mb-3 flex items-center gap-2"><Palette size={18} /> Galeria de pinturas</h3>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            {[...paintings].reverse().map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPainting(p)}
+                className="rounded-2xl overflow-hidden border-2 border-[#EADFCB] hover:border-[#2F6F62] transition-colors"
+              >
+                <img src={p.imageData} alt={p.subjectLabel} className="w-full aspect-square object-cover" />
+                <div className="px-1.5 py-1 text-left">
+                  <div className="text-xs font-semibold truncate">{p.subjectLabel}</div>
+                  <div className="text-[10px] text-[#999]">{new Date(p.ts).toLocaleDateString('pt-BR')}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {selectedPainting && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+              onClick={() => setSelectedPainting(null)}
+            >
+              <div className="bg-white rounded-3xl p-4 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+                <img src={selectedPainting.imageData} alt={selectedPainting.subjectLabel} className="w-full rounded-2xl mb-3" />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-bold">{selectedPainting.subjectLabel}</div>
+                    <div className="text-xs text-[#999]">{new Date(selectedPainting.ts).toLocaleDateString('pt-BR')}</div>
+                  </div>
+                  <button onClick={() => setSelectedPainting(null)} className="p-2 rounded-xl bg-[#F3F0EA]"><X size={18} /></button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <p className="text-xs text-[#999]">
         Esses dados são um apoio de acompanhamento para a família — não substituem avaliação de um profissional
