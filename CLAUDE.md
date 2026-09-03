@@ -747,6 +747,21 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   botão tem um alternador explícito ("Usar ícone" / "Usar foto"); trocar de
   modo limpa a escolha anterior. Reforça previsibilidade: o botão sempre
   tem uma única imagem clara, não uma mistura confusa.
+- **Cadastro de botão é um assistente por etapas, não um formulário
+  longo só** — `ButtonsManager` tem 4 passos (Palavra → Categoria →
+  Imagem → Revisar), com prévia do botão sempre visível no topo
+  (atualiza em tempo real) e bolinhas de progresso 1-4. "Próximo" só
+  libera quando o passo atual tem o mínimo preenchido (nome no passo 1;
+  foto escolhida no passo 3, se esse for o modo). Cor personalizada
+  fica escondida atrás de um link ("quero escolher uma cor diferente")
+  no passo 2 — a categoria já escolhe uma cor sozinha na maioria dos
+  casos, então não precisa aparecer sempre. A lógica de dados (objeto
+  salvo, validações) é idêntica ao formulário anterior — só a UI mudou.
+  Emojis do passo 3 (`EMOJI_GROUPS`, dado puro fora da lógica de
+  renderização) ficam agrupados em chips por tema (Comida e bebida,
+  Sentimentos, Ações, Rotina e lugares, Diversão, Ajuda e social,
+  Outros) em vez de uma grade única — mais fácil de achar um emoji
+  específico com mais opções disponíveis.
 - **Figuras dos jogos são fotos reais, não emoji** — quebra-cabeça e
   jogo da memória usam `imageSrc`/`imageData` (nunca mais um emoji
   desenhado em canvas). Emoji é um símbolo abstrato — reconhecer que

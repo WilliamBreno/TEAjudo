@@ -3817,19 +3817,47 @@ function WordBuildManager({ subjects, onSave }) {
   );
 }
 
+// Assistente por etapas (mockup aprovado) — mantém a lógica de dados
+// idêntica ao formulário anterior (mesmo objeto salvo, mesmas
+// validações), só reorganiza a UI em 4 passos com prévia sempre visível.
+const BUTTON_WIZARD_STEPS = [
+  { key: 1, label: 'Palavra' },
+  { key: 2, label: 'Categoria' },
+  { key: 3, label: 'Imagem' },
+  { key: 4, label: 'Revisar' },
+];
+
+// Emojis agrupados por tema (passo 3) — dado puro, fácil de estender
+// depois sem mexer na lógica de renderização. Os emojis que já existiam
+// no conjunto anterior continuam todos aqui, só reorganizados dentro
+// dos grupos ("Outros" pros que não se encaixaram em nenhum tema).
+const EMOJI_GROUPS = [
+  { key: 'comida', label: 'Comida e bebida', emojis: ['🍽️', '💧', '🍎', '🍞', '🥛', '🍌', '🍕', '🥕'] },
+  { key: 'sentimentos', label: 'Sentimentos', emojis: ['😊', '😢', '😴', '😡', '😰', '🥰'] },
+  { key: 'acoes', label: 'Ações', emojis: ['✋', '🙋', '➕', '✅', '❌', '👋', '🤝'] },
+  { key: 'rotina', label: 'Rotina e lugares', emojis: ['🚻', '🛏️', '🚗', '🏠', '🛁', '📺'] },
+  { key: 'diversao', label: 'Diversão', emojis: ['🎵', '⚽', '🎨', '📚', '🎮'] },
+  { key: 'ajuda', label: 'Ajuda e social', emojis: ['🆘', '🙂', '🫵', '🤗'] },
+  { key: 'outros', label: 'Outros', emojis: ['⭐'] },
+];
+
 function ButtonsManager({ buttons, onSave }) {
+  const [step, setStep] = useState(1);
   const [label, setLabel] = useState('');
   const [phrase, setPhrase] = useState('');
   const [category, setCategory] = useState('acoes');
   const [color, setColor] = useState(CATEGORY_META['acoes'].color);
+  // Cor personalizada fica escondida atrás de um link — a categoria já
+  // escolhe a cor sozinha na maioria dos casos.
+  const [showCustomColor, setShowCustomColor] = useState(false);
   const [iconMode, setIconMode] = useState('emoji'); // 'emoji' | 'minimal' | 'foto'
   const [emoji, setEmoji] = useState('⭐');
+  const [emojiGroup, setEmojiGroup] = useState(EMOJI_GROUPS[0].key);
   // null = segue a sugestão da categoria automaticamente (CATEGORY_DEFAULT_ICON);
   // uma string = o pai escolheu um ícone específico na grade, abaixo.
   const [minimalIcon, setMinimalIcon] = useState(null);
   const [imageData, setImageData] = useState(null);
   const [startLocked, setStartLocked] = useState(false);
-  const EMOJI_CHOICES = ['⭐', '🙋', '➕', '🆘', '✋', '🙂', '🫵', '🍽️', '💧', '🚻', '😊', '😢', '😴', '✅', '❌', '👋', '🎵', '📺', '🛏️', '🚗'];
 
   function handleImage(e) {
     const file = e.target.files?.[0];
@@ -3867,6 +3895,8 @@ function ButtonsManager({ buttons, onSave }) {
     };
     onSave([...buttons, newButton]);
     setLabel(''); setPhrase(''); setImageData(null); setMinimalIcon(null);
+    setStep(1);
+    setShowCustomColor(false);
   }
 
   function removeButton(id) {
@@ -3881,150 +3911,240 @@ function ButtonsManager({ buttons, onSave }) {
   // variável com nome capitalizado primeiro.
   const MinimalIcon = MINIMAL_ICON_MAP[effectiveMinimalIcon];
 
+  // "Próximo" só libera quando o passo atual tem o mínimo preenchido —
+  // passo 1 exige nome, passo 3 exige foto escolhida (se esse for o
+  // modo); os demais não têm campo obrigatório.
+  const stepValid = step === 1 ? label.trim().length > 0
+    : step === 3 ? (iconMode !== 'foto' || !!imageData)
+    : true;
+
+  function goNext() { if (stepValid && step < 4) setStep(step + 1); }
+  function goBack() { if (step > 1) setStep(step - 1); }
+
+  const activeEmojiGroup = EMOJI_GROUPS.find((g) => g.key === emojiGroup) || EMOJI_GROUPS[0];
+
   return (
     <div>
       <div className="bg-white rounded-2xl border border-[#EADFCB] p-4 mb-6">
         <h3 className="font-bold mb-3">Novo botão</h3>
-        <div className="grid sm:grid-cols-2 gap-3 mb-3">
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nome do botão (ex: Suco)" className="border border-[#DDD] rounded-xl px-3 py-2" />
-          <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Frase falada (opcional, ex: Quero suco)" className="border border-[#DDD] rounded-xl px-3 py-2" />
+
+        {/* Prévia do botão — sempre visível, atualiza em tempo real */}
+        <div className="flex justify-center mb-4">
+          <div
+            className="rounded-2xl p-3 inline-flex flex-col items-center gap-1 w-24 tea-popin"
+            style={{ backgroundColor: color, border: `3px solid ${shadeColor(color, 0.22)}` }}
+          >
+            {iconMode === 'foto' && imageData
+              ? <img src={imageData} className="w-12 h-12 object-cover rounded-xl border-2 border-white/80" alt="" />
+              : iconMode === 'minimal'
+                ? <MinimalIcon size={28} color={getContrastText(color)} strokeWidth={2.25} />
+                : <span className="text-3xl">{emoji}</span>}
+            <span className="text-xs font-bold text-center" style={{ color: getContrastText(color) }}>{label || 'Pré-visualização'}</span>
+          </div>
         </div>
-        <p className="text-sm text-[#5A5A5A] mb-2">Categoria (define a cor sugerida):</p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {Object.entries(CATEGORY_META).map(([key, meta]) => (
-            <button
-              key={key}
-              onClick={() => { setCategory(key); setColor(meta.color); }}
-              className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-200"
-              style={category === key
-                ? { backgroundColor: meta.color, color: '#fff', borderColor: meta.color }
-                : { backgroundColor: '#fff', borderColor: meta.color, color: meta.color }}
-            >
-              {meta.label}
-            </button>
+
+        {/* Indicador de progresso */}
+        <div className="flex items-center justify-center gap-1.5 mb-1">
+          {BUTTON_WIZARD_STEPS.map((s) => (
+            <div key={s.key} className="flex items-center gap-1.5">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors duration-200"
+                style={step === s.key
+                  ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
+                  : step > s.key
+                    ? { backgroundColor: '#EAF3F0', color: '#2F6F62', borderColor: '#2F6F62' }
+                    : { backgroundColor: '#fff', color: '#999', borderColor: '#DDD' }}
+              >
+                {s.key}
+              </div>
+              {s.key < 4 && <div className="w-6 h-0.5 rounded-full" style={{ backgroundColor: step > s.key ? '#2F6F62' : '#DDD' }} />}
+            </div>
           ))}
         </div>
-        <div className="flex items-center gap-3 mb-4">
-          <label htmlFor="tea-color-picker" className="text-sm text-[#5A5A5A]">Cor individual deste botão:</label>
-          <input
-            id="tea-color-picker"
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className="w-10 h-10 rounded-lg border border-[#DDD] cursor-pointer p-0.5 bg-white"
-          />
-          <span className="text-xs text-[#999]">(já vem sugerida pela categoria, mas você pode trocar)</span>
-        </div>
+        <p className="text-center text-xs text-[#999] mb-4">Passo {step} de 4 — {BUTTON_WIZARD_STEPS[step - 1].label}</p>
 
-        <p className="text-sm text-[#5A5A5A] mb-2">Imagem do botão — escolha um jeito:</p>
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => chooseIconMode('emoji')}
-            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
-          >
-            🙂 Emoji
-          </button>
-          <button
-            onClick={() => chooseIconMode('minimal')}
-            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'minimal' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
-          >
-            <MinimalIcon size={16} /> Minimalista
-          </button>
-          <button
-            onClick={() => chooseIconMode('foto')}
-            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'foto' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
-          >
-            <ImagePlus size={16} /> Foto
-          </button>
-        </div>
-
-        {iconMode === 'emoji' && (
-          <div className="tea-fadein mb-3">
-            <label className="flex items-center gap-2 mb-2">
-              <input
-                value={emoji}
-                onChange={(e) => setEmoji(e.target.value)}
-                placeholder="Digite ou cole um emoji"
-                maxLength={8}
-                className="text-2xl w-16 h-12 text-center border border-[#DDD] rounded-xl"
-              />
-              <span className="text-xs text-[#999]">
-                Abra o teclado de emojis do seu aparelho aqui pra usar qualquer emoji
-                (celular: botão de emoji no teclado; Windows: <kbd className="px-1 border rounded">Win</kbd> + <kbd className="px-1 border rounded">.</kbd>;
-                Mac: <kbd className="px-1 border rounded">Cmd</kbd> + <kbd className="px-1 border rounded">Ctrl</kbd> + <kbd className="px-1 border rounded">Espaço</kbd>) —
-                ou escolha um dos comuns abaixo.
-              </span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {EMOJI_CHOICES.map((em) => (
-                <button
-                  key={em}
-                  onClick={() => setEmoji(em)}
-                  className={`text-2xl w-10 h-10 rounded-xl border transition-all duration-150 ${emoji === em ? 'border-[#2F6F62] bg-[#EAF3F0]' : 'border-[#EEE]'}`}
-                >
-                  {em}
-                </button>
-              ))}
-            </div>
+        {step === 1 && (
+          <div className="tea-fadein space-y-3 mb-4">
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nome do botão (ex: Suco)" className="border border-[#DDD] rounded-xl px-3 py-2 w-full" />
+            <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Frase falada (opcional, ex: Quero suco)" className="border border-[#DDD] rounded-xl px-3 py-2 w-full" />
           </div>
         )}
 
-        {iconMode === 'minimal' && (
-          <div className="tea-fadein mb-3">
-            <p className="text-xs text-[#999] mb-2">
-              Escolha o ícone (sugestão da categoria "{CATEGORY_META[category].label}" já vem marcada):
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {MINIMAL_ICON_LIBRARY.map(({ key, label, Icon }) => (
+        {step === 2 && (
+          <div className="tea-fadein mb-4">
+            <p className="text-sm text-[#5A5A5A] mb-2">Categoria (define a cor do botão):</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {Object.entries(CATEGORY_META).map(([key, meta]) => (
                 <button
                   key={key}
-                  onClick={() => setMinimalIcon(key)}
-                  aria-label={label}
-                  title={label}
-                  className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-150 ${effectiveMinimalIcon === key ? 'border-[#2F6F62] bg-[#EAF3F0] text-[#2F6F62]' : 'border-[#EEE] text-[#5A5A5A]'}`}
+                  onClick={() => { setCategory(key); setColor(meta.color); }}
+                  className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-200"
+                  style={category === key
+                    ? { backgroundColor: meta.color, color: '#fff', borderColor: meta.color }
+                    : { backgroundColor: '#fff', borderColor: meta.color, color: meta.color }}
                 >
-                  <Icon size={18} />
+                  {meta.label}
                 </button>
               ))}
             </div>
+            {!showCustomColor ? (
+              <button onClick={() => setShowCustomColor(true)} className="text-sm text-[#2F6F62] underline">
+                quero escolher uma cor diferente
+              </button>
+            ) : (
+              <div className="tea-fadein flex items-center gap-3">
+                <label htmlFor="tea-color-picker" className="text-sm text-[#5A5A5A]">Cor individual deste botão:</label>
+                <input
+                  id="tea-color-picker"
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="w-10 h-10 rounded-lg border border-[#DDD] cursor-pointer p-0.5 bg-white"
+                />
+              </div>
+            )}
           </div>
         )}
 
-        {iconMode === 'foto' && (
-          <div className="tea-fadein mb-3">
-            <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] mb-2 cursor-pointer bg-[#F3F0EA] px-3 py-2 rounded-xl">
-              <ImagePlus size={16} /> {imageData ? 'Trocar foto' : 'Escolher foto'}
-              <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+        {step === 3 && (
+          <div className="tea-fadein mb-4">
+            <p className="text-sm text-[#5A5A5A] mb-2">Imagem do botão — escolha um jeito:</p>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => chooseIconMode('emoji')}
+                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+              >
+                🙂 Emoji
+              </button>
+              <button
+                onClick={() => chooseIconMode('minimal')}
+                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'minimal' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+              >
+                <MinimalIcon size={16} /> Minimalista
+              </button>
+              <button
+                onClick={() => chooseIconMode('foto')}
+                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'foto' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+              >
+                <ImagePlus size={16} /> Foto
+              </button>
+            </div>
+
+            {iconMode === 'emoji' && (
+              <div className="tea-fadein">
+                <label className="flex items-center gap-2 mb-2">
+                  <input
+                    value={emoji}
+                    onChange={(e) => setEmoji(e.target.value)}
+                    placeholder="Digite ou cole um emoji"
+                    maxLength={8}
+                    className="text-2xl w-16 h-12 text-center border border-[#DDD] rounded-xl"
+                  />
+                  <span className="text-xs text-[#999]">
+                    Abra o teclado de emojis do seu aparelho aqui pra usar qualquer emoji
+                    (celular: botão de emoji no teclado; Windows: <kbd className="px-1 border rounded">Win</kbd> + <kbd className="px-1 border rounded">.</kbd>;
+                    Mac: <kbd className="px-1 border rounded">Cmd</kbd> + <kbd className="px-1 border rounded">Ctrl</kbd> + <kbd className="px-1 border rounded">Espaço</kbd>) —
+                    ou escolha um dos comuns abaixo, organizados por tema.
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {EMOJI_GROUPS.map((g) => (
+                    <button
+                      key={g.key}
+                      onClick={() => setEmojiGroup(g.key)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all duration-150 ${emojiGroup === g.key ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeEmojiGroup.emojis.map((em) => (
+                    <button
+                      key={em}
+                      onClick={() => setEmoji(em)}
+                      className={`text-2xl w-10 h-10 rounded-xl border transition-all duration-150 ${emoji === em ? 'border-[#2F6F62] bg-[#EAF3F0]' : 'border-[#EEE]'}`}
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {iconMode === 'minimal' && (
+              <div className="tea-fadein">
+                <p className="text-xs text-[#999] mb-2">
+                  Escolha o ícone (sugestão da categoria "{CATEGORY_META[category].label}" já vem marcada):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {MINIMAL_ICON_LIBRARY.map(({ key, label: iconLabel, Icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => setMinimalIcon(key)}
+                      aria-label={iconLabel}
+                      title={iconLabel}
+                      className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-150 ${effectiveMinimalIcon === key ? 'border-[#2F6F62] bg-[#EAF3F0] text-[#2F6F62]' : 'border-[#EEE] text-[#5A5A5A]'}`}
+                    >
+                      <Icon size={18} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {iconMode === 'foto' && (
+              <div className="tea-fadein">
+                <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] mb-2 cursor-pointer bg-[#F3F0EA] px-3 py-2 rounded-xl">
+                  <ImagePlus size={16} /> {imageData ? 'Trocar foto' : 'Escolher foto'}
+                  <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+                </label>
+                {!imageData && <p className="text-xs text-[#B15E3E]">Escolha uma foto para poder avançar.</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="tea-fadein mb-4">
+            <p className="text-sm font-semibold text-[#5A5A5A] mb-2">Resumo:</p>
+            <ul className="text-sm text-[#5A5A5A] space-y-1 mb-4">
+              <li><span className="font-semibold text-[#2B2B2B]">Nome:</span> {label || '—'}</li>
+              <li><span className="font-semibold text-[#2B2B2B]">Frase falada:</span> {phrase.trim() || label || '—'}</li>
+              <li><span className="font-semibold text-[#2B2B2B]">Categoria:</span> {CATEGORY_META[category].label}</li>
+              <li><span className="font-semibold text-[#2B2B2B]">Imagem:</span> {iconMode === 'foto' ? 'Foto' : iconMode === 'minimal' ? 'Ícone minimalista' : 'Emoji'}</li>
+            </ul>
+            <label className="flex items-center gap-2 mb-1 text-sm text-[#5A5A5A]">
+              <input type="checkbox" checked={startLocked} onChange={(e) => setStartLocked(e.target.checked)} />
+              Cadastrar já bloqueado (fica na fila até o app sugerir liberar, ou até você liberar manualmente)
             </label>
-            {!imageData && <p className="text-xs text-[#B15E3E]">Escolha uma foto para poder salvar o botão.</p>}
           </div>
         )}
 
-        <div
-          className="rounded-2xl p-3 mb-3 inline-flex flex-col items-center gap-1 w-24 tea-popin"
-          style={{ backgroundColor: color, border: `3px solid ${shadeColor(color, 0.22)}` }}
-        >
-          {iconMode === 'foto' && imageData
-            ? <img src={imageData} className="w-12 h-12 object-cover rounded-xl border-2 border-white/80" alt="" />
-            : iconMode === 'minimal'
-              ? <MinimalIcon size={28} color={getContrastText(color)} strokeWidth={2.25} />
-              : <span className="text-3xl">{emoji}</span>}
-          <span className="text-xs font-bold text-center" style={{ color: getContrastText(color) }}>{label || 'Pré-visualização'}</span>
-        </div>
-
-        <label className="flex items-center gap-2 mb-3 text-sm text-[#5A5A5A]">
-          <input type="checkbox" checked={startLocked} onChange={(e) => setStartLocked(e.target.checked)} />
-          Cadastrar já bloqueado (fica na fila até o app sugerir liberar, ou até você liberar manualmente)
-        </label>
-
-        <div>
+        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#EEE]">
           <button
-            onClick={addButton}
-            disabled={iconMode === 'foto' && !imageData}
-            className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-4 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+            onClick={goBack}
+            disabled={step === 1}
+            className="px-4 py-2 rounded-xl text-sm font-semibold border border-[#DDD] text-[#5A5A5A] transition-transform active:scale-95 disabled:opacity-40"
           >
-            <Plus size={16} /> Adicionar botão
+            Voltar
           </button>
+          {step < 4 ? (
+            <button
+              onClick={goNext}
+              disabled={!stepValid}
+              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2 font-semibold transition-transform active:scale-95 disabled:opacity-50"
+            >
+              Próximo
+            </button>
+          ) : (
+            <button
+              onClick={addButton}
+              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95"
+            >
+              <Plus size={16} /> Adicionar botão
+            </button>
+          )}
         </div>
       </div>
 
