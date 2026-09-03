@@ -821,19 +821,35 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   tem uma única imagem clara, não uma mistura confusa.
 - **Cadastro de botão é um assistente por etapas, não um formulário
   longo só** — `ButtonsManager` tem 4 passos (Palavra → Categoria →
-  Imagem → Revisar), com prévia do botão sempre visível no topo
-  (atualiza em tempo real) e bolinhas de progresso 1-4. "Próximo" só
-  libera quando o passo atual tem o mínimo preenchido (nome no passo 1;
-  foto escolhida no passo 3, se esse for o modo). Cor personalizada
-  fica escondida atrás de um link ("quero escolher uma cor diferente")
-  no passo 2 — a categoria já escolhe uma cor sozinha na maioria dos
-  casos, então não precisa aparecer sempre. A lógica de dados (objeto
-  salvo, validações) é idêntica ao formulário anterior — só a UI mudou.
-  Emojis do passo 3 (`EMOJI_GROUPS`, dado puro fora da lógica de
-  renderização) ficam agrupados em chips por tema (Comida e bebida,
-  Sentimentos, Ações, Rotina e lugares, Diversão, Ajuda e social,
-  Outros) em vez de uma grade única — mais fácil de achar um emoji
-  específico com mais opções disponíveis.
+  Imagem → Revisar), seguindo um mockup de referência aprovado pelo
+  usuário (`button-creator-wizard-mockup.jsx`, enviado à parte): prévia
+  do botão sempre visível no topo (atualiza em tempo real, com o
+  visual neon de verdade via `getButtonCardStyle`, não uma caixa lisa),
+  bolinhas de progresso 1-4 (viram `✓` nos passos já completos), título
+  do passo em destaque, campos com pergunta conversacional + texto de
+  ajuda ("O que a criança vai pedir?", "Esse é o texto que aparece
+  escrito no botão."), categorias em grade 2 colunas (não mais pills),
+  botão "Voltar" fica invisível (`opacity-0`, não `hidden` — não pula o
+  layout) no primeiro passo em vez de aparecer desabilitado, e "Salvar
+  botão" no passo final. "Próximo" só libera quando o passo atual tem o
+  mínimo preenchido (nome no passo 1; foto escolhida no passo 3, se
+  esse for o modo). Cor personalizada fica escondida atrás de um link
+  ("Quero escolher uma cor diferente") no passo 2 — a categoria já
+  escolhe uma cor sozinha na maioria dos casos, então não precisa
+  aparecer sempre; escolher uma categoria nova só sobrescreve a cor se
+  a pessoa ainda não abriu o seletor personalizado (mesmo comportamento
+  do mockup). A lógica de dados (objeto salvo, validações) é idêntica
+  ao formulário anterior — só a UI mudou. O mockup em si só previa
+  "ícone" (emoji) ou "foto" no passo 3 — a opção "Minimalista" (ícone de
+  linha) foi **mantida como uma terceira opção**, além do mockup,
+  porque removê-la quebraria a raiz da instrução original de manter a
+  lógica de dados idêntica (o campo `iconVariant: 'minimal'` já existia
+  antes do wizard). Emojis do passo 3 (`EMOJI_GROUPS`, dado puro fora da
+  lógica de renderização) ficam agrupados em chips por tema (Comida e
+  bebida, Sentimentos, Ações, Rotina e lugares, Diversão, Ajuda e
+  social, Outros) em vez da grade única do mockup — pedido explícito à
+  parte, mais fácil de achar um emoji específico com mais opções
+  disponíveis.
 - **Figuras dos jogos são fotos reais, não emoji** — quebra-cabeça e
   jogo da memória usam `imageSrc`/`imageData` (nunca mais um emoji
   desenhado em canvas). Emoji é um símbolo abstrato — reconhecer que

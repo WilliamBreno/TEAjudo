@@ -5,6 +5,7 @@ import {
   Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
   ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
   Heart, Star, Sun, Moon, Volume2, Bed, Tv, Palette, Paintbrush, PaintBucket, Eraser,
+  ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -4560,21 +4561,21 @@ function ButtonsManager({ buttons, onSave }) {
   return (
     <div>
       <div className="bg-white rounded-2xl border border-[#EADFCB] p-4 mb-6">
-        <h3 className="font-bold mb-3">Novo botão</h3>
-
-        {/* Prévia do botão — sempre visível, atualiza em tempo real */}
-        <div className="flex justify-center mb-4">
+        {/* Prévia do botão — sempre visível, atualiza em tempo real (mesmo
+            estilo neon do botão de verdade, não uma caixa lisa) */}
+        <div className="flex flex-col items-center mb-6">
           <div
-            className="rounded-2xl p-3 inline-flex flex-col items-center gap-1 w-24 tea-popin"
-            style={{ backgroundColor: color, border: `3px solid ${shadeColor(color, 0.22)}` }}
+            className="rounded-2xl p-4 inline-flex flex-col items-center gap-1 w-28 tea-popin transition-all duration-300"
+            style={getButtonCardStyle('nitido', color)}
           >
             {iconMode === 'foto' && imageData
               ? <img src={imageData} className="w-12 h-12 object-cover rounded-xl border-2 border-white/80" alt="" />
               : iconMode === 'minimal'
                 ? <MinimalIcon size={28} color={getContrastText(color)} strokeWidth={2.25} />
                 : <span className="text-3xl">{emoji}</span>}
-            <span className="text-xs font-bold text-center" style={{ color: getContrastText(color) }}>{label || 'Pré-visualização'}</span>
+            <span className="text-xs font-bold text-center break-words" style={{ color: getContrastText(color) }}>{label || 'assim vai ficar'}</span>
           </div>
+          <p className="text-xs text-[#999] mt-2">Prévia do botão — vai mudando conforme você preenche</p>
         </div>
 
         {/* Indicador de progresso */}
@@ -4584,50 +4585,68 @@ function ButtonsManager({ buttons, onSave }) {
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors duration-200"
                 style={step === s.key
-                  ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
+                  ? { backgroundColor: '#fff', color: '#2F6F62', borderColor: '#2F6F62' }
                   : step > s.key
-                    ? { backgroundColor: '#EAF3F0', color: '#2F6F62', borderColor: '#2F6F62' }
-                    : { backgroundColor: '#fff', color: '#999', borderColor: '#DDD' }}
+                    ? { backgroundColor: '#2F6F62', color: '#fff', borderColor: '#2F6F62' }
+                    : { backgroundColor: '#fff', color: '#AAA', borderColor: '#DDD' }}
               >
-                {s.key}
+                {step > s.key ? <Check size={14} /> : s.key}
               </div>
               {s.key < 4 && <div className="w-6 h-0.5 rounded-full" style={{ backgroundColor: step > s.key ? '#2F6F62' : '#DDD' }} />}
             </div>
           ))}
         </div>
-        <p className="text-center text-xs text-[#999] mb-4">Passo {step} de 4 — {BUTTON_WIZARD_STEPS[step - 1].label}</p>
+        <h3 className="text-center font-bold text-lg mb-4">{BUTTON_WIZARD_STEPS[step - 1].label}</h3>
 
         {step === 1 && (
-          <div className="tea-fadein space-y-3 mb-4">
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nome do botão (ex: Suco)" className="border border-[#DDD] rounded-xl px-3 py-2 w-full" />
-            <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Frase falada (opcional, ex: Quero suco)" className="border border-[#DDD] rounded-xl px-3 py-2 w-full" />
+          <div className="tea-fadein space-y-4 mb-4">
+            <div>
+              <label className="text-sm font-semibold text-[#5A5A5A] block mb-1">O que a criança vai pedir?</label>
+              <input
+                autoFocus
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Ex: Suco"
+                className="border border-[#DDD] rounded-xl px-3 py-2.5 w-full text-base"
+              />
+              <p className="text-xs text-[#999] mt-1">Esse é o texto que aparece escrito no botão.</p>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-[#5A5A5A] block mb-1">O que a voz vai falar? (opcional)</label>
+              <input
+                value={phrase}
+                onChange={(e) => setPhrase(e.target.value)}
+                placeholder="Ex: Eu quero suco"
+                className="border border-[#DDD] rounded-xl px-3 py-2.5 w-full text-base"
+              />
+              <p className="text-xs text-[#999] mt-1">Se deixar em branco, a voz vai falar só "{label || 'Suco'}".</p>
+            </div>
           </div>
         )}
 
         {step === 2 && (
           <div className="tea-fadein mb-4">
-            <p className="text-sm text-[#5A5A5A] mb-2">Categoria (define a cor do botão):</p>
-            <div className="flex flex-wrap gap-2 mb-3">
+            <p className="text-sm text-[#5A5A5A] mb-3">A categoria já escolhe uma cor bonita pra você:</p>
+            <div className="grid grid-cols-2 gap-2 mb-4">
               {Object.entries(CATEGORY_META).map(([key, meta]) => (
                 <button
                   key={key}
-                  onClick={() => { setCategory(key); setColor(meta.color); }}
-                  className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-200"
+                  onClick={() => { setCategory(key); if (!showCustomColor) setColor(meta.color); }}
+                  className="px-3 py-3 rounded-xl text-sm font-semibold border-2 transition-all duration-150"
                   style={category === key
-                    ? { backgroundColor: meta.color, color: '#fff', borderColor: meta.color }
-                    : { backgroundColor: '#fff', borderColor: meta.color, color: meta.color }}
+                    ? { backgroundColor: meta.color, borderColor: meta.color, color: getContrastText(meta.color) }
+                    : { backgroundColor: '#fff', borderColor: '#EEE', color: '#5A5A5A' }}
                 >
                   {meta.label}
                 </button>
               ))}
             </div>
             {!showCustomColor ? (
-              <button onClick={() => setShowCustomColor(true)} className="text-sm text-[#2F6F62] underline">
-                quero escolher uma cor diferente
+              <button onClick={() => setShowCustomColor(true)} className="text-sm text-[#2F6F62] font-semibold underline">
+                Quero escolher uma cor diferente
               </button>
             ) : (
               <div className="tea-fadein flex items-center gap-3">
-                <label htmlFor="tea-color-picker" className="text-sm text-[#5A5A5A]">Cor individual deste botão:</label>
                 <input
                   id="tea-color-picker"
                   type="color"
@@ -4635,6 +4654,7 @@ function ButtonsManager({ buttons, onSave }) {
                   onChange={(e) => setColor(e.target.value)}
                   className="w-10 h-10 rounded-lg border border-[#DDD] cursor-pointer p-0.5 bg-white"
                 />
+                <span className="text-xs text-[#999]">Cor personalizada pra este botão</span>
               </div>
             )}
           </div>
@@ -4642,23 +4662,22 @@ function ButtonsManager({ buttons, onSave }) {
 
         {step === 3 && (
           <div className="tea-fadein mb-4">
-            <p className="text-sm text-[#5A5A5A] mb-2">Imagem do botão — escolha um jeito:</p>
             <div className="flex gap-2 mb-3">
               <button
                 onClick={() => chooseIconMode('emoji')}
-                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+                className={`flex-1 px-3 py-3 rounded-xl text-sm font-semibold border-2 flex items-center justify-center gap-1.5 transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
               >
-                🙂 Emoji
+                <Smile size={16} /> Emoji
               </button>
               <button
                 onClick={() => chooseIconMode('minimal')}
-                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'minimal' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+                className={`flex-1 px-3 py-3 rounded-xl text-sm font-semibold border-2 flex items-center justify-center gap-1.5 transition-all duration-200 ${iconMode === 'minimal' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
               >
                 <MinimalIcon size={16} /> Minimalista
               </button>
               <button
                 onClick={() => chooseIconMode('foto')}
-                className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'foto' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+                className={`flex-1 px-3 py-3 rounded-xl text-sm font-semibold border-2 flex items-center justify-center gap-1.5 transition-all duration-200 ${iconMode === 'foto' ? 'bg-[#2F6F62] text-white border-[#2F6F62]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
               >
                 <ImagePlus size={16} /> Foto
               </button>
@@ -4729,28 +4748,27 @@ function ButtonsManager({ buttons, onSave }) {
 
             {iconMode === 'foto' && (
               <div className="tea-fadein">
-                <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] mb-2 cursor-pointer bg-[#F3F0EA] px-3 py-2 rounded-xl">
+                <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] mb-2 cursor-pointer bg-[#F3F0EA] px-4 py-3 rounded-xl">
                   <ImagePlus size={16} /> {imageData ? 'Trocar foto' : 'Escolher foto'}
                   <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
                 </label>
-                {!imageData && <p className="text-xs text-[#B15E3E]">Escolha uma foto para poder avançar.</p>}
+                {!imageData && <p className="text-xs text-[#B15E3E] mt-2">Escolha uma foto pra continuar.</p>}
               </div>
             )}
           </div>
         )}
 
         {step === 4 && (
-          <div className="tea-fadein mb-4">
-            <p className="text-sm font-semibold text-[#5A5A5A] mb-2">Resumo:</p>
-            <ul className="text-sm text-[#5A5A5A] space-y-1 mb-4">
-              <li><span className="font-semibold text-[#2B2B2B]">Nome:</span> {label || '—'}</li>
-              <li><span className="font-semibold text-[#2B2B2B]">Frase falada:</span> {phrase.trim() || label || '—'}</li>
-              <li><span className="font-semibold text-[#2B2B2B]">Categoria:</span> {CATEGORY_META[category].label}</li>
-              <li><span className="font-semibold text-[#2B2B2B]">Imagem:</span> {iconMode === 'foto' ? 'Foto' : iconMode === 'minimal' ? 'Ícone minimalista' : 'Emoji'}</li>
-            </ul>
-            <label className="flex items-center gap-2 mb-1 text-sm text-[#5A5A5A]">
+          <div className="tea-fadein mb-4 space-y-4">
+            <div className="bg-[#F8F5EE] rounded-xl p-3 text-sm space-y-1">
+              <p><span className="text-[#999]">Botão:</span> <strong>{label || '—'}</strong></p>
+              <p><span className="text-[#999]">Fala:</span> <strong>{phrase.trim() || label || '—'}</strong></p>
+              <p><span className="text-[#999]">Categoria:</span> <strong>{CATEGORY_META[category].label}</strong></p>
+              <p><span className="text-[#999]">Imagem:</span> <strong>{iconMode === 'foto' ? 'Foto' : iconMode === 'minimal' ? 'Ícone minimalista' : 'Emoji'}</strong></p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[#5A5A5A]">
               <input type="checkbox" checked={startLocked} onChange={(e) => setStartLocked(e.target.checked)} />
-              Cadastrar já bloqueado (fica na fila até o app sugerir liberar, ou até você liberar manualmente)
+              Cadastrar já bloqueado (libera aos poucos, junto com o resto do vocabulário)
             </label>
           </div>
         )}
@@ -4759,24 +4777,24 @@ function ButtonsManager({ buttons, onSave }) {
           <button
             onClick={goBack}
             disabled={step === 1}
-            className="px-4 py-2 rounded-xl text-sm font-semibold border border-[#DDD] text-[#5A5A5A] transition-transform active:scale-95 disabled:opacity-40"
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-[#5A5A5A] flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-0"
           >
-            Voltar
+            <ArrowLeft size={16} /> Voltar
           </button>
           {step < 4 ? (
             <button
               onClick={goNext}
               disabled={!stepValid}
-              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2 font-semibold transition-transform active:scale-95 disabled:opacity-50"
+              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2.5 font-semibold flex items-center gap-1.5 transition-transform active:scale-95 disabled:opacity-40"
             >
-              Próximo
+              Próximo <ArrowRight size={16} />
             </button>
           ) : (
             <button
               onClick={addButton}
-              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95"
+              className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2.5 font-semibold flex items-center gap-1.5 transition-transform active:scale-95"
             >
-              <Plus size={16} /> Adicionar botão
+              <Check size={16} /> Salvar botão
             </button>
           )}
         </div>
