@@ -5,7 +5,7 @@ import {
   Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
   ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
   Heart, Star, Sun, Moon, Volume2, Bed, Tv, Palette, Paintbrush, PaintBucket, Eraser,
-  ArrowLeft, ArrowRight,
+  ArrowLeft, ArrowRight, Eye, EyeOff,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1323,6 +1323,10 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
   const [childName, setChildName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Olhinho de mostrar/ocultar senha — cada campo tem seu próprio estado,
+  // pra poder revelar um sem mexer no outro.
+  const [showSenha, setShowSenha] = useState(false);
+  const [showNovaSenha, setShowNovaSenha] = useState(false);
 
   // Fluxo "esqueci a senha" — mesmo padrão de segurança do fluxo de troca
   // de PIN (SecuritySetup): código de 6 dígitos gerado/conferido só no
@@ -1341,6 +1345,8 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
     setDemoCode('');
     setError('');
     setSenha('');
+    setShowSenha(false);
+    setShowNovaSenha(false);
   }
 
   async function handleSubmit(e) {
@@ -1483,14 +1489,24 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
               className="border border-[#DDD] rounded-xl px-4 py-3 text-center text-xl w-full mb-3 tracking-widest"
               maxLength={6}
             />
-            <input
-              value={forgotNovaSenha}
-              onChange={(e) => setForgotNovaSenha(e.target.value)}
-              type="password"
-              placeholder="Nova senha (mín. 8 caracteres)"
-              className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
-              autoComplete="new-password"
-            />
+            <div className="relative mb-3">
+              <input
+                value={forgotNovaSenha}
+                onChange={(e) => setForgotNovaSenha(e.target.value)}
+                type={showNovaSenha ? 'text' : 'password'}
+                placeholder="Nova senha (mín. 8 caracteres)"
+                className="border border-[#DDD] rounded-xl pl-4 pr-11 py-3 text-center w-full"
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNovaSenha((v) => !v)}
+                aria-label={showNovaSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#999]"
+              >
+                {showNovaSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <button
               onClick={handleResetPassword}
@@ -1545,14 +1561,24 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
           className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
           autoComplete="email"
         />
-        <input
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          type="password"
-          placeholder="Senha"
-          className="border border-[#DDD] rounded-xl px-4 py-3 w-full mb-3"
-          autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-        />
+        <div className="relative mb-3">
+          <input
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            type={showSenha ? 'text' : 'password'}
+            placeholder="Senha"
+            className="border border-[#DDD] rounded-xl pl-4 pr-11 py-3 w-full"
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+          />
+          <button
+            type="button"
+            onClick={() => setShowSenha((v) => !v)}
+            aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#999]"
+          >
+            {showSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
         {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
         <button
           type="submit"

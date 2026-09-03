@@ -82,7 +82,10 @@ Rodar o backend em produção: `cd backend && npm start`.
 
 ## Deploy em produção
 Backend no Render (`https://teajudo.onrender.com`), frontend no Vercel
-(`https://te-ajudo-chi.vercel.app`) — domínios diferentes.
+— domínio próprio `https://teajudo.social.br` (principal;
+`www.teajudo.social.br` redireciona pra ele), o `te-ajudo-chi.vercel.app`
+original continua existindo mas o domínio próprio é quem os usuários
+acessam. Ver seção "Domínio próprio" mais abaixo pra detalhes de DNS.
 
 **Frontend e backend "parecem" o mesmo site pro navegador, via proxy do
 Vercel** — `frontend/vercel.json` repassa `/api/*` pro Render por baixo
@@ -96,7 +99,8 @@ domínios diferentes), e navegadores modernos (Chrome incluso, não só
 Safari) vêm bloqueando isso cada vez mais — mesmo com `SameSite=None;
 Secure` configurado certinho no backend, a sessão se perdia a cada
 recarregamento da página. Com o proxy, toda chamada de API sai do próprio
-`te-ajudo-chi.vercel.app` do ponto de vista do navegador, então o cookie
+domínio que a pessoa está usando (`teajudo.social.br` ou
+`te-ajudo-chi.vercel.app`) do ponto de vista do navegador, então o cookie
 vira "primeira parte" e para de ser bloqueado. No Vercel, a variável
 `VITE_API_URL` **não aponta pro Render** — mas o painel do Vercel não
 deixa salvar uma variável com valor vazio (validação própria da
@@ -399,7 +403,50 @@ de tudo o resto, inclusive `ChildPanel`. Um `useEffect` no mount chama
 ao recarregar a página. Logout mora em `SettingsPanel` → card "Sua conta"
 → botão "Sair da conta" → `POST /api/auth/logout`. Toda chamada de auth
 usa `credentials: 'include'` (obrigatório pra cookie cross-origin
-funcionar em produção).
+funcionar em produção). Os campos de senha (login/cadastro e "nova
+senha" no fluxo "esqueci a senha") têm um botão de olhinho
+(`Eye`/`EyeOff`, `showSenha`/`showNovaSenha`) que alterna
+`type="password"`/`type="text"` — não existe em campos de PIN (esses
+são numéricos de 4-6 dígitos, conceito diferente de senha de conta, sem
+esse alternador).
+
+## Domínio próprio (teajudo.social.br)
+Registrado no Registro.br, DNS gerenciado lá mesmo (zona avançada, sem
+delegar pra nameservers externos). `teajudo.social.br` é o domínio
+principal; `www.teajudo.social.br` redireciona pra ele (307/308,
+configurado nas Domain Settings do Vercel). `CORS_ORIGIN` no Render
+aponta pra `https://teajudo.social.br` (o domínio principal, sem www) —
+o proxy do `vercel.json` já cobre a maior parte disso, é só fallback.
+
+Registros de DNS cadastrados (Registro.br, zona avançada): A (`@` →
+IP do Vercel), CNAME (`www` → destino do Vercel), 2× TXT
+`_vercel` (verificação de posse, um pra cada domínio) — os TXT podem
+ser removidos depois de verificados, não são permanentes. **Detalhe do
+Registro.br que não é óbvio**: pra apontar o domínio raiz, o campo
+"Nome" fica **em branco**, nunca `@` (diferente da maioria dos outros
+provedores/do que o próprio Vercel mostra na tela — o Registro.br
+recusa `@` como "Nome do record inválido").
+
+**Autenticação de domínio na SendGrid** (resolve o problema de e-mail
+caindo em spam, documentado como pendência antes de ter domínio
+próprio): Sender Authentication → Authenticate Your Domain →
+`teajudo.social.br`, host "Other Host (Not Listed)". Gera 6 registros
+(mesma regra do "Nome em branco pro domínio raiz" não se aplica aqui,
+já que nenhum desses é do domínio raiz): 3 CNAME de link branding
+(`urlNNNN`, um id numérico, e `emNNNN`), 2 CNAME de DKIM
+(`s1._domainkey`, `s2._domainkey`) e 1 TXT de DMARC (`_dmarc`). Depois
+de verificado, `SENDGRID_FROM` (Render) pode ser qualquer endereço
+`@teajudo.social.br` — não precisa mais de Single Sender Verification
+por endereço individual.
+
+**Erro real encontrado e corrigido nessa troca**: a SendGrid rejeitava
+o envio com `400 {"errors":[{"message":"Invalid from email address"}]}`
+mesmo com o domínio autenticado — causa raiz era o valor de
+`SENDGRID_FROM` em si (espaço/aspas/formato `Nome <email>` em vez de só
+o e-mail puro), não a autenticação de domínio. Como `sendVerificationCodeEmail`
+já cai em modo demo (mostra o código na tela) quando o envio real
+falha por qualquer motivo, o login/cadastro nunca ficou bloqueado
+durante a investigação — só a entrega por e-mail de verdade.
 
 ## Assinatura via InfinitePay (Fase 2)
 R$29,90/mês, cobrado pelo Checkout Integrado da InfinitePay
@@ -1020,15 +1067,10 @@ deveria sobreviver a um logout.
 - [ ] Exportar relatório da Análise em PDF para levar ao terapeuta
 - [ ] Testes automatizados (ainda não há nenhum, nem frontend nem backend)
 - [x] Deploy: backend no Render (`https://teajudo.onrender.com`), frontend
-      no Vercel (`https://te-ajudo-chi.vercel.app`) — ver seção "Deploy em
-      produção" abaixo
-- [ ] `SENDGRID_FROM` está verificado por Single Sender (Gmail), não por
-      Domain Authentication — sem domínio próprio autenticado via DNS
-      (SPF/DKIM), o Gmail não confia no remetente e os e-mails tendem a
-      cair em spam na primeira vez (o frontend já avisa pra checar a caixa
-      de spam). Decisão deliberada por enquanto: comprar/reaproveitar um
-      domínio e migrar para Domain Authentication na SendGrid resolve isso
-      de vez, mas foi adiado.
+      no Vercel, domínio próprio `https://teajudo.social.br` — ver seções
+      "Deploy em produção" e "Domínio próprio" abaixo
+- [x] `SENDGRID_FROM` migrado de Single Sender (Gmail) pra Domain
+      Authentication (`teajudo.social.br`) — ver seção "Domínio próprio"
 
 ## Convenções de código
 - Componentes funcionais + hooks, sem classes
