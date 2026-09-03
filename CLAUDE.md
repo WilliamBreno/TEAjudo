@@ -187,6 +187,22 @@ async function saveJSON(key, value) {
   `{ts, level, pieceCount, timeSeconds, moves, completed}`
 - `teajudo:memory-results` — últimos 200 resultados do jogo da memória:
   `{ts, level, pairCount, timeSeconds, moves, completed}`
+- `teajudo:wordbuild-subjects` — repertório de palavras do jogo Formar a
+  Palavra, cadastrado pelos pais em `GamesManager` →
+  `WordBuildManager`: `{key, word, phrase, iconVariant ('emoji'|'foto'),
+  emoji, imageData}` (`emoji`/`imageData` mutuamente exclusivos, mesmo
+  padrão dos botões)
+- `teajudo:wordbuild-results` — últimos 200 resultados de Formar a
+  Palavra: `{ts, word, letterCount, timeSeconds, attempts, completed}`
+- `teajudo:matchlines-subjects` — pares cadastrados do jogo Ligar os
+  Itens, em `GamesManager` → `MatchLinesManager`: `{key, label, relation
+  ('identico'|'categoria'|'associativo'), a: {variant, emoji,
+  imageData}, b: {variant, emoji, imageData}}` — `relation` decide em
+  qual dos 3 níveis (hierarquia VB-MAPP) o par aparece
+- `teajudo:matchlines-results` — últimos 200 resultados de Ligar os
+  Itens: `{ts, level, relation, pairCount, timeSeconds, errors,
+  completed}` — `errors` (tentativas erradas) decide se o próximo nível
+  libera (ver `GamesView`, "bom desempenho" = `errors <= pairCount`)
 - `teajudo:puzzle-subjects` — figuras personalizadas (fotos) adicionadas
   pelos pais: `{key, label, imageData}`. Somadas às figuras embutidas
   (`BUILTIN_PUZZLE_SUBJECTS`, fotos reais em `frontend/public/game-subjects/`
@@ -699,6 +715,17 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   filosofia do quebra-cabeça (`showTimer` fica desligado por padrão). A
   fase de memorização usa uma barra de progresso calma, não uma contagem
   regressiva alarmante.
+- **Formar a Palavra é cópia com apoio visual, não adivinhação** — a
+  palavra correta fica escrita e a imagem visível o tempo todo enquanto
+  a criança arrasta as letras; nunca esconde a resposta certa tentando
+  "testar" a criança, mesma filosofia de tirar pressão do resto do app.
+- **Ligar os Itens segue a hierarquia real do VB-MAPP** (idêntico →
+  categoria → associativo/funcional), progressão usada clinicamente em
+  currículos de ABA/CAA — pular direto pra associativo sem passar pelos
+  anteriores tende a ser difícil demais cedo demais. Erro nesse jogo só
+  balança os dois itens e desfaz sozinho (`.tea-shake`), sem nenhuma
+  penalidade — mesmo espírito de "erro não trava nem pune" do resto do
+  app.
 - **Motion.dev / Magic UI / React Bits não estavam disponíveis** no
   ambiente de artifact original — os efeitos (`tea-popin`, `tea-fadein`,
   `tea-pulse-ring`, `tea-shimmer-btn`, confete, o gloss/reflexo estático
@@ -738,14 +765,18 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 | Bolha do Tuti com balão de fala (hoje só na aba Jogos) | `TutiBubble` |
 | Painel principal (botões falantes, cores vívidas) | `ChildPanel`, `getContrastText`, `shadeColor` |
 | Reprodução de áudio (chama `/api/tts` + fallback local) | `playPhrase` (em `TEAjudoApp`), `playAudioBase64`, `fallbackSpeak` |
-| Escolha de jogo (quebra-cabeça ou memória) | `GamesView` |
+| Escolha de jogo (quebra-cabeça, memória, formar a palavra, ligar os itens) | `GamesView` |
 | Quebra-cabeça com arraste | `PuzzleBoard` |
 | Jogo da memória (mostra e depois vira para achar os pares) | `MemoryBoard` |
+| Formar a palavra (copiar arrastando letras, apoio visual sempre visível) | `WordBuildBoard` |
+| Ligar os itens (discriminação, hierarquia VB-MAPP, arraste desenha linha) | `MatchLinesBoard` |
 | Confete ao concluir | `ConfettiBurst` |
 | Portão da área dos pais (PIN) | `ParentGate` |
 | Configuração de segurança (e-mail → código → novo PIN, via backend) | `SecuritySetup` |
 | Cadastro de botões (ícone OU foto, cor individual, bloqueio/liberação) | `ButtonsManager` |
 | Figuras personalizadas para os jogos | `GamesManager` |
+| Repertório de palavras do jogo Formar a Palavra | `WordBuildManager` (dentro de `GamesManager`) |
+| Repertório de pares do jogo Ligar os Itens | `MatchLinesManager` (dentro de `GamesManager`) |
 | Configurações (tempo, voz, PIN) | `SettingsPanel` |
 | Gravação de voz para clonagem (MediaRecorder) | `VoiceRecorder` |
 | Gráficos de desempenho (botões, quebra-cabeça, memória) | `Analytics` |

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Lock, Unlock, Plus, Trash2, X, Clock, Mic, ImagePlus, ChevronLeft, RotateCcw,
   Puzzle as PuzzleIcon, Sparkles, Mail, CreditCard, RefreshCw,
@@ -79,6 +79,13 @@ const GLOBAL_STYLES = `
     75% { transform: rotate(-6deg) scale(1.05); }
     100% { transform: rotate(0) scale(1); }
   }
+  @keyframes teaShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
   @keyframes teaRingBurst {
     0% { transform: scale(1); opacity: 0.9; }
     100% { transform: scale(1.5); opacity: 0; }
@@ -134,6 +141,7 @@ const GLOBAL_STYLES = `
 
   .tea-btn-bounce { animation: teaBtnBounce 0.6s cubic-bezier(.34,1.56,.64,1) both; }
   .tea-icon-wiggle { animation: teaIconWiggle 0.52s ease-in-out both; }
+  .tea-shake { animation: teaShake 0.4s ease-in-out both; }
   .tea-ring-burst, .tea-ring-burst-2, .tea-ring-burst-3 {
     position: absolute; inset: 0; border-radius: inherit;
     border-width: 3px; border-style: solid;
@@ -222,7 +230,7 @@ const GLOBAL_STYLES = `
 
   @media (prefers-reduced-motion: reduce) {
     .tea-popin, .tea-fadein, .tea-pulse-ring, .tea-shimmer-btn::after, .tea-confetti-piece,
-    .tea-btn-bounce, .tea-icon-wiggle, .tea-ring-burst, .tea-ring-burst-2, .tea-ring-burst-3,
+    .tea-btn-bounce, .tea-icon-wiggle, .tea-shake, .tea-ring-burst, .tea-ring-burst-2, .tea-ring-burst-3,
     .tea-shine-sweep, .tea-confetti-burst, .tea-star-pop, .tea-eq-bar,
     .tea-orb-halo-anim, .tea-icon-float, .tea-spark-anim {
       animation: none !important;
@@ -377,6 +385,19 @@ const MEMORY_LEVELS = [
   { level: 3, pairs: 6, label: 'Nível 3', sub: '6 pares' },
   { level: 4, pairs: 8, label: 'Nível 4', sub: '8 pares' },
 ];
+
+// Hierarquia real do VB-MAPP pra discriminação de estímulos: idêntico é
+// sempre o mais fácil (a MESMA imagem nos dois lados), categoria vem
+// depois (itens diferentes do mesmo grupo, ex: maçã + banana = frutas),
+// e associativo/funcional é o mais difícil (itens que andam juntos na
+// rotina mas não se parecem visualmente, ex: escova + pasta de dente) —
+// por isso a progressão só anda nessa ordem, nunca pula etapa.
+const MATCHLINES_LEVELS = [
+  { level: 1, relation: 'identico', label: 'Idêntico', sub: 'a mesma imagem' },
+  { level: 2, relation: 'categoria', label: 'Categoria', sub: 'do mesmo grupo' },
+  { level: 3, relation: 'associativo', label: 'Associativo', sub: 'andam juntos' },
+];
+const MATCHLINES_ROUND_SIZE = 4;
 
 /* ---------- Utilitários ---------- */
 
@@ -553,7 +574,7 @@ function lastNDays(n) {
 // clínica nem um diagnóstico. Serve como apoio para a família observar,
 // e a decisão final de expandir o vocabulário continua sendo dos pais
 // (idealmente em conjunto com fonoaudiólogo/terapeuta ocupacional).
-function computeReadiness({ buttons, logs, puzzleResults, memoryResults = [] }) {
+function computeReadiness({ buttons, logs, puzzleResults, memoryResults = [], wordbuildResults = [], matchlinesResults = [] }) {
   const lockedButtons = buttons.filter((b) => b.locked);
   if (lockedButtons.length === 0) return null;
 
@@ -579,15 +600,19 @@ function computeReadiness({ buttons, logs, puzzleResults, memoryResults = [] }) 
 
   const completedPuzzleLevels = new Set(puzzleResults.filter((r) => r.completed).map((r) => r.level));
   const completedMemoryLevels = new Set(memoryResults.filter((r) => r.completed).map((r) => r.level));
+  const completedWordbuild = wordbuildResults.filter((r) => r.completed);
+  const completedMatchlinesLevels = new Set(matchlinesResults.filter((r) => r.completed).map((r) => r.level));
   const gamesProgress =
     completedPuzzleLevels.size >= 2 || [...completedPuzzleLevels].some((lvl) => lvl >= 2) ||
-    completedMemoryLevels.size >= 2 || [...completedMemoryLevels].some((lvl) => lvl >= 2);
+    completedMemoryLevels.size >= 2 || [...completedMemoryLevels].some((lvl) => lvl >= 2) ||
+    completedWordbuild.length >= 2 ||
+    completedMatchlinesLevels.size >= 2 || [...completedMatchlinesLevels].some((lvl) => lvl >= 2);
 
   const signals = [
     { label: `Usou ${Math.round(consistency * 100)}% dos botões ativos nos últimos 7 dias`, met: consistency >= 0.7 },
     { label: `Esteve ativo em ${activeDays14} dos últimos 14 dias`, met: activeDays14 >= 8 },
     { label: 'Comunicação diversificada (não concentrada em poucos botões)', met: totalUses7 >= 10 && top3Share <= 0.6 },
-    { label: 'Progrediu em pelo menos 2 níveis nos jogos (quebra-cabeça ou memória)', met: gamesProgress },
+    { label: 'Progrediu nos jogos (quebra-cabeça, memória ou formar a palavra)', met: gamesProgress },
   ];
 
   const metCount = signals.filter((s) => s.met).length;
@@ -738,6 +763,10 @@ export default function TEAjudoApp() {
   const [puzzleResults, setPuzzleResults] = useState([]);
   const [memoryResults, setMemoryResults] = useState([]);
   const [customSubjects, setCustomSubjects] = useState([]);
+  const [wordbuildSubjects, setWordbuildSubjects] = useState([]);
+  const [wordbuildResults, setWordbuildResults] = useState([]);
+  const [matchlinesSubjects, setMatchlinesSubjects] = useState([]);
+  const [matchlinesResults, setMatchlinesResults] = useState([]);
   const [audioCache, setAudioCache] = useState({});
   const [showBreak, setShowBreak] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState('');
@@ -769,7 +798,7 @@ export default function TEAjudoApp() {
 
   useEffect(() => {
     (async () => {
-      const [b, s, l, p, m, cs, ac, du] = await Promise.all([
+      const [b, s, l, p, m, cs, ac, du, wbs, wbr, mls, mlr] = await Promise.all([
         loadJSON('teajudo:buttons', DEFAULT_BUTTONS),
         loadJSON('teajudo:settings', DEFAULT_SETTINGS),
         loadJSON('teajudo:logs', []),
@@ -778,6 +807,10 @@ export default function TEAjudoApp() {
         loadJSON('teajudo:puzzle-subjects', []),
         loadJSON('teajudo:audio-cache', {}),
         loadJSON('teajudo:daily-usage', { date: todayKey(), seconds: 0 }),
+        loadJSON('teajudo:wordbuild-subjects', []),
+        loadJSON('teajudo:wordbuild-results', []),
+        loadJSON('teajudo:matchlines-subjects', []),
+        loadJSON('teajudo:matchlines-results', []),
       ]);
       setButtons(b);
       // 'fluido' foi removido — qualquer valor salvo que não seja 'tatil'
@@ -803,6 +836,10 @@ export default function TEAjudoApp() {
       setPuzzleResults(p);
       setMemoryResults(m);
       setCustomSubjects(cs);
+      setWordbuildSubjects(wbs);
+      setWordbuildResults(wbr);
+      setMatchlinesSubjects(mls);
+      setMatchlinesResults(mlr);
       setAudioCache(ac);
       setLoading(false);
       // guarda o uso do dia numa ref simples via storage já carregado
@@ -865,14 +902,40 @@ export default function TEAjudoApp() {
     saveJSON('teajudo:puzzle-subjects', next);
   }, []);
 
+  const persistWordbuildSubjects = useCallback((next) => {
+    setWordbuildSubjects(next);
+    saveJSON('teajudo:wordbuild-subjects', next);
+  }, []);
+
+  const addWordbuildResult = useCallback((entry) => {
+    setWordbuildResults((prev) => {
+      const next = [...prev, entry].slice(-200);
+      saveJSON('teajudo:wordbuild-results', next);
+      return next;
+    });
+  }, []);
+
+  const persistMatchlinesSubjects = useCallback((next) => {
+    setMatchlinesSubjects(next);
+    saveJSON('teajudo:matchlines-subjects', next);
+  }, []);
+
+  const addMatchlinesResult = useCallback((entry) => {
+    setMatchlinesResults((prev) => {
+      const next = [...prev, entry].slice(-200);
+      saveJSON('teajudo:matchlines-results', next);
+      return next;
+    });
+  }, []);
+
   const allSubjects = useMemo(
     () => [...BUILTIN_PUZZLE_SUBJECTS, ...customSubjects],
     [customSubjects]
   );
 
   const readiness = useMemo(
-    () => computeReadiness({ buttons, logs, puzzleResults, memoryResults }),
-    [buttons, logs, puzzleResults, memoryResults]
+    () => computeReadiness({ buttons, logs, puzzleResults, memoryResults, wordbuildResults, matchlinesResults }),
+    [buttons, logs, puzzleResults, memoryResults, wordbuildResults, matchlinesResults]
   );
 
   const playPhrase = useCallback(async (button) => {
@@ -992,8 +1055,14 @@ export default function TEAjudoApp() {
           onBack={() => setView('panel')}
           onFinishPuzzle={addPuzzleResult}
           onFinishMemory={addMemoryResult}
+          onFinishWordbuild={addWordbuildResult}
+          onFinishMatchlines={addMatchlinesResult}
           showTimer={settings.showTimer}
           subjects={allSubjects}
+          wordbuildSubjects={wordbuildSubjects}
+          matchlinesSubjects={matchlinesSubjects}
+          matchlinesResults={matchlinesResults}
+          onPlayPhrase={playPhrase}
         />
       )}
 
@@ -1049,6 +1118,12 @@ export default function TEAjudoApp() {
           memoryResults={memoryResults}
           customSubjects={customSubjects}
           onSaveSubjects={persistSubjects}
+          wordbuildSubjects={wordbuildSubjects}
+          onSaveWordbuildSubjects={persistWordbuildSubjects}
+          wordbuildResults={wordbuildResults}
+          matchlinesSubjects={matchlinesSubjects}
+          onSaveMatchlinesSubjects={persistMatchlinesSubjects}
+          matchlinesResults={matchlinesResults}
           readiness={readiness}
           onRequestPinChange={() => {
             setSecurityMode('change');
@@ -1898,10 +1973,15 @@ function TutiBubble({ phrase, tabKey }) {
   );
 }
 
-function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects }) {
-  const [gameType, setGameType] = useState(null); // null | 'puzzle' | 'memory'
+function GamesView({
+  onBack, onFinishPuzzle, onFinishMemory, onFinishWordbuild, onFinishMatchlines,
+  showTimer, subjects, wordbuildSubjects, matchlinesSubjects, matchlinesResults, onPlayPhrase,
+}) {
+  const [gameType, setGameType] = useState(null); // null | 'puzzle' | 'memory' | 'wordbuild' | 'matchlines'
   const [subject, setSubject] = useState(null);
   const [level, setLevel] = useState(null);
+  const [wordSubject, setWordSubject] = useState(null);
+  const [matchLevel, setMatchLevel] = useState(null);
 
   if (gameType === 'puzzle' && subject && level) {
     return (
@@ -1923,6 +2003,30 @@ function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects
         showTimer={showTimer}
         onExit={() => setLevel(null)}
         onFinish={onFinishMemory}
+      />
+    );
+  }
+
+  if (gameType === 'wordbuild' && wordSubject) {
+    return (
+      <WordBuildBoard
+        subject={wordSubject}
+        showTimer={showTimer}
+        onExit={() => setWordSubject(null)}
+        onFinish={onFinishWordbuild}
+        onPlayPhrase={onPlayPhrase}
+      />
+    );
+  }
+
+  if (gameType === 'matchlines' && matchLevel) {
+    return (
+      <MatchLinesBoard
+        levelInfo={matchLevel}
+        subjects={matchlinesSubjects}
+        showTimer={showTimer}
+        onExit={() => setMatchLevel(null)}
+        onFinish={onFinishMatchlines}
       />
     );
   }
@@ -1953,6 +2057,106 @@ function GamesView({ onBack, onFinishPuzzle, onFinishMemory, showTimer, subjects
             <div className="font-bold text-lg text-[#2F6F62]">Jogo da memória</div>
             <p className="text-sm text-[#999] mt-1">Memorize e encontre os pares</p>
           </button>
+          <button
+            onClick={() => setGameType('wordbuild')}
+            className="tea-popin bg-white border-2 border-[#EADFCB] rounded-3xl p-6 text-center shadow-sm hover:border-[#6B4A96] transition-colors"
+            style={{ animationDelay: '120ms' }}
+          >
+            <div className="text-5xl mb-3">🔤</div>
+            <div className="font-bold text-lg text-[#6B4A96]">Formar a palavra</div>
+            <p className="text-sm text-[#999] mt-1">Arraste as letras pra copiar a palavra</p>
+          </button>
+          <button
+            onClick={() => setGameType('matchlines')}
+            className="tea-popin bg-white border-2 border-[#EADFCB] rounded-3xl p-6 text-center shadow-sm hover:border-[#2F5F82] transition-colors"
+            style={{ animationDelay: '180ms' }}
+          >
+            <div className="text-5xl mb-3">🔗</div>
+            <div className="font-bold text-lg text-[#2F5F82]">Ligar os itens</div>
+            <p className="text-sm text-[#999] mt-1">Ligue as imagens que combinam</p>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameType === 'wordbuild') {
+    return (
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+        <div className="flex items-center gap-2 mb-5">
+          <button onClick={() => setGameType(null)} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+          <h1 className="text-2xl font-bold text-[#6B4A96]">Formar a palavra</h1>
+        </div>
+        {wordbuildSubjects.length === 0 ? (
+          <p className="text-[#5A5A5A]">
+            Nenhuma palavra cadastrada ainda — peça pra um adulto adicionar palavras na Área dos
+            pais, aba Jogos.
+          </p>
+        ) : (
+          <>
+            <p className="text-[#5A5A5A] mb-4">Escolha uma palavra:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {wordbuildSubjects.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setWordSubject(s)}
+                  className="bg-white border-2 border-[#EADFCB] rounded-2xl p-4 flex flex-col items-center gap-2 hover:border-[#6B4A96] transition-colors"
+                >
+                  {s.iconVariant === 'foto'
+                    ? <img src={s.imageData} alt={s.word} className="w-14 h-14 object-cover rounded-xl" />
+                    : <span className="text-4xl">{s.emoji}</span>}
+                  <span className="font-bold text-sm text-[#6B4A96]">{s.word}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (gameType === 'matchlines') {
+    // Progressão real do VB-MAPP: um nível só libera se (a) já existem
+    // pares cadastrados daquele tipo de relação e (b) o nível anterior
+    // teve "bom desempenho" (uma rodada completa com poucos erros) — o
+    // nível 1 (idêntico) não depende de nenhum anterior.
+    function goodPerformance(level) {
+      return matchlinesResults.some((r) => r.level === level && r.completed && r.errors <= r.pairCount);
+    }
+    const availableByRelation = {};
+    matchlinesSubjects.forEach((s) => {
+      availableByRelation[s.relation] = (availableByRelation[s.relation] || 0) + 1;
+    });
+    return (
+      <div className="max-w-3xl mx-auto px-4 pt-6">
+        <div className="flex items-center gap-2 mb-5">
+          <button onClick={() => setGameType(null)} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+          <h1 className="text-2xl font-bold text-[#2F5F82]">Ligar os itens</h1>
+        </div>
+        <p className="text-[#5A5A5A] mb-4">Escolha o nível:</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {MATCHLINES_LEVELS.map((l, idx) => {
+            const hasEnoughPairs = (availableByRelation[l.relation] || 0) >= 2;
+            const progressionOk = idx === 0 || goodPerformance(MATCHLINES_LEVELS[idx - 1].level);
+            const unlocked = hasEnoughPairs && progressionOk;
+            return (
+              <button
+                key={l.level}
+                onClick={() => unlocked && setMatchLevel(l)}
+                disabled={!unlocked}
+                className={`rounded-2xl border p-4 text-center shadow-sm ${unlocked ? 'bg-white border-[#BFD9EC]' : 'bg-[#F3F0EA] border-[#EADFCB] opacity-60 cursor-not-allowed'}`}
+              >
+                <div className="font-bold text-[#2F5F82]">{l.label}</div>
+                <div className="text-sm text-[#999]">{l.sub}</div>
+                {!unlocked && !hasEnoughPairs && (
+                  <div className="text-[10px] text-[#B15E3E] mt-1">Cadastre pelo menos 2 pares desse tipo</div>
+                )}
+                {!unlocked && hasEnoughPairs && !progressionOk && (
+                  <div className="text-[10px] text-[#B15E3E] mt-1">Complete bem o nível anterior pra liberar</div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -2210,6 +2414,468 @@ function PuzzleBoard({ subject, level, showTimer, onExit, onFinish }) {
           <div className="text-4xl mb-2">🎉</div>
           <p className="font-bold text-[#2F6F62] mb-3">Muito bem! Quebra-cabeça completo!</p>
           <button onClick={reshuffle} className="bg-[#2F6F62] text-white rounded-xl px-4 py-2 font-semibold">Jogar de novo</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Jogos: Formar a Palavra (copiar formando, não adivinhar) ---------- */
+// A criança vê a palavra correta escrita o tempo todo (acima do
+// tabuleiro) — a tarefa é copiar arrastando as letras embaralhadas pros
+// quadrados certos, não adivinhar a ortografia. Arraste com Pointer
+// Events, mesmo padrão do PuzzleBoard; correção de erro é por toque
+// (toca a letra colocada pra devolver pra bandeja).
+function WordBuildBoard({ subject, showTimer, onExit, onFinish, onPlayPhrase }) {
+  const letters = useMemo(() => subject.word.toUpperCase().split(''), [subject.word]);
+  const total = letters.length;
+  const [placement, setPlacement] = useState(() => Array(total).fill(null)); // slot -> índice original da letra, ou null
+  const [tray, setTray] = useState(() => shuffledArray(total)); // letras ainda não colocadas
+  const [attempts, setAttempts] = useState(0);
+  const [seconds, setSeconds] = useState(0);
+  const [selected, setSelected] = useState(null); // fallback de toque: letra da bandeja selecionada
+  const [done, setDone] = useState(false);
+  const finishedRef = useRef(false);
+  const boardRef = useRef(null);
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    setPlacement(Array(total).fill(null));
+    setTray(shuffledArray(total));
+    setAttempts(0);
+    setSeconds(0);
+    setSelected(null);
+    setDone(false);
+    finishedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject.key]);
+
+  useEffect(() => {
+    if (done) return;
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [done]);
+
+  useEffect(() => {
+    if (finishedRef.current) return;
+    if (placement.length > 0 && placement.every((v, i) => v === i)) {
+      finishedRef.current = true;
+      setDone(true);
+      onFinish({ ts: Date.now(), word: subject.word, letterCount: total, timeSeconds: seconds, attempts, completed: true });
+      if (onPlayPhrase) {
+        onPlayPhrase({ id: 'wordbuild-' + subject.key, phrase: subject.phrase || subject.word, category: 'wordbuild', label: subject.word });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placement]);
+
+  function placeInSlot(originalIndex, slot) {
+    let displaced = null;
+    setPlacement((prev) => {
+      const next = [...prev];
+      const prevSlot = next.indexOf(originalIndex);
+      if (prevSlot !== -1) next[prevSlot] = null;
+      displaced = next[slot];
+      next[slot] = originalIndex;
+      return next;
+    });
+    setTray((prev) => {
+      let t = prev.filter((idx) => idx !== originalIndex);
+      if (displaced !== null && displaced !== undefined) t = [...t, displaced];
+      return t;
+    });
+    setAttempts((a) => a + 1);
+  }
+
+  function returnToTray(originalIndex) {
+    setPlacement((prev) => {
+      const slot = prev.indexOf(originalIndex);
+      if (slot === -1) return prev;
+      const next = [...prev];
+      next[slot] = null;
+      return next;
+    });
+    setTray((prev) => (prev.includes(originalIndex) ? prev : [...prev, originalIndex]));
+  }
+
+  function slotFromPoint(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const tile = el && el.closest ? el.closest('[data-slot]') : null;
+    if (!tile || !boardRef.current || !boardRef.current.contains(tile)) return null;
+    return Number(tile.dataset.slot);
+  }
+
+  function isTrayTarget(x, y) {
+    const el = document.elementFromPoint(x, y);
+    return !!(el && el.closest && el.closest('[data-tray-zone]'));
+  }
+
+  function resetDragVisuals(el) {
+    if (!el) return;
+    el.style.transform = '';
+    el.style.zIndex = '';
+    el.style.boxShadow = '';
+    el.style.transition = '';
+    el.style.pointerEvents = '';
+  }
+
+  function handlePointerDown(e, originalIndex) {
+    if (done) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { originalIndex, startX: e.clientX, startY: e.clientY, moved: false, el: e.currentTarget };
+  }
+
+  function handlePointerMove(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) > 6) {
+      d.moved = true;
+      d.el.style.transition = 'none';
+      d.el.style.zIndex = '50';
+      d.el.style.boxShadow = '0 10px 24px rgba(0,0,0,0.28)';
+      d.el.style.pointerEvents = 'none';
+    }
+    if (d.moved) d.el.style.transform = `translate(${dx}px, ${dy}px) scale(1.08)`;
+  }
+
+  function handlePointerUp(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    if (d.moved) {
+      const dropSlot = slotFromPoint(e.clientX, e.clientY);
+      const droppedOnTray = dropSlot === null && isTrayTarget(e.clientX, e.clientY);
+      resetDragVisuals(d.el);
+      setSelected(null);
+      if (dropSlot !== null) placeInSlot(d.originalIndex, dropSlot);
+      else if (droppedOnTray) returnToTray(d.originalIndex);
+    } else {
+      // sem movimento: seleciona a letra (toque de novo desmarca; tocar num quadrado depois coloca lá)
+      setSelected((prev) => (prev === d.originalIndex ? null : d.originalIndex));
+    }
+  }
+
+  function handlePointerCancel() {
+    const d = dragRef.current;
+    if (d) resetDragVisuals(d.el);
+    dragRef.current = null;
+  }
+
+  function handleSlotTap(slot) {
+    if (done) return;
+    if (selected !== null) {
+      placeInSlot(selected, slot);
+      setSelected(null);
+    } else if (placement[slot] !== null) {
+      returnToTray(placement[slot]);
+    }
+  }
+
+  function reset() {
+    setPlacement(Array(total).fill(null));
+    setTray(shuffledArray(total));
+    setAttempts(0);
+    setSeconds(0);
+    setSelected(null);
+    setDone(false);
+    finishedRef.current = false;
+  }
+
+  return (
+    <div className="relative max-w-md mx-auto px-4 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <div className="text-sm font-semibold text-[#5A5A5A]">Formar a palavra</div>
+        <button onClick={reset} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><RotateCcw size={18} /></button>
+      </div>
+      {done && <ConfettiBurst />}
+
+      <div className="flex flex-col items-center gap-2 mb-5">
+        {subject.iconVariant === 'foto'
+          ? <img src={subject.imageData} alt={subject.word} className="w-24 h-24 object-cover rounded-2xl border-4 border-white shadow-sm" />
+          : <span className="text-6xl">{subject.emoji}</span>}
+        <div className="text-2xl font-extrabold tracking-widest text-[#6B4A96]">{subject.word.toUpperCase()}</div>
+      </div>
+
+      {showTimer && (
+        <div className="text-center text-sm text-[#999] mb-2">⏱ {seconds}s · {attempts} tentativas</div>
+      )}
+
+      <p className="text-center text-xs text-[#999] mb-3">Arraste cada letra pro quadrado certo — ou toque numa letra e depois no quadrado</p>
+
+      <div ref={boardRef} className="flex flex-wrap justify-center gap-2 mb-6 select-none">
+        {placement.map((originalIndex, slot) => (
+          <div
+            key={slot}
+            data-slot={slot}
+            onClick={() => handleSlotTap(slot)}
+            className="w-12 h-12 rounded-xl border-2 border-dashed border-[#D9C4EC] bg-[#F8F3FC] flex items-center justify-center text-2xl font-extrabold text-[#6B4A96] cursor-pointer"
+          >
+            {originalIndex !== null ? letters[originalIndex] : ''}
+          </div>
+        ))}
+      </div>
+
+      <div data-tray-zone="true" className="flex flex-wrap justify-center gap-2 min-h-[64px] p-2 rounded-2xl bg-[#F3F0EA]">
+        {tray.map((originalIndex) => (
+          <button
+            key={originalIndex}
+            onPointerDown={(e) => handlePointerDown(e, originalIndex)}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            className={`w-12 h-12 rounded-xl border-2 bg-white touch-none select-none flex items-center justify-center text-2xl font-extrabold cursor-grab active:cursor-grabbing transition-transform duration-150 ${selected === originalIndex ? 'border-[#6B4A96] scale-105' : 'border-[#EADFCB]'}`}
+            style={{ color: '#6B4A96' }}
+          >
+            {letters[originalIndex]}
+          </button>
+        ))}
+      </div>
+
+      {done && (
+        <div className="tea-fadein text-center mt-5">
+          <div className="text-4xl mb-2">🎉</div>
+          <p className="font-bold text-[#6B4A96] mb-3">Muito bem! Você formou "{subject.word}"!</p>
+          <button onClick={reset} className="bg-[#6B4A96] text-white rounded-xl px-4 py-2 font-semibold">Jogar de novo</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Jogos: Ligar os Itens (discriminação, hierarquia VB-MAPP) ---------- */
+// Duas colunas de imagens; liga uma da esquerda a uma da direita
+// arrastando (desenha uma linha de verdade, via Pointer Events + SVG) ou
+// tocando um item de cada lado. Acerto vira linha verde permanente; erro
+// só balança os dois itens e desfaz sozinho, sem punição nenhuma.
+function MatchLinesBoard({ levelInfo, subjects, showTimer, onExit, onFinish }) {
+  const pairsOfLevel = useMemo(
+    () => subjects.filter((s) => s.relation === levelInfo.relation),
+    [subjects, levelInfo.relation]
+  );
+  const round = useMemo(() => {
+    const shuffled = [...pairsOfLevel].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, Math.min(MATCHLINES_ROUND_SIZE, shuffled.length));
+  }, [pairsOfLevel, levelInfo.level]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [leftOrder, setLeftOrder] = useState(() => shuffledArray(round.length));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [rightOrder, setRightOrder] = useState(() => shuffledArray(round.length));
+  const [matched, setMatched] = useState([]); // [{leftIdx, rightIdx}]
+  const [selectedLeft, setSelectedLeft] = useState(null);
+  const [shakeLeft, setShakeLeft] = useState(null);
+  const [shakeRight, setShakeRight] = useState(null);
+  const [dragLine, setDragLine] = useState(null); // {x1,y1,x2,y2}
+  const [lineCoords, setLineCoords] = useState({});
+  const [attempts, setAttempts] = useState(0);
+  const [errors, setErrors] = useState(0);
+  const [seconds, setSeconds] = useState(0);
+  const [done, setDone] = useState(false);
+  const finishedRef = useRef(false);
+  const containerRef = useRef(null);
+  const itemRefs = useRef({});
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    setLeftOrder(shuffledArray(round.length));
+    setRightOrder(shuffledArray(round.length));
+    setMatched([]);
+    setSelectedLeft(null);
+    setAttempts(0);
+    setErrors(0);
+    setSeconds(0);
+    setDone(false);
+    finishedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levelInfo.level, round.length]);
+
+  useEffect(() => {
+    if (done) return;
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [done]);
+
+  useEffect(() => {
+    if (finishedRef.current) return;
+    if (round.length > 0 && matched.length === round.length) {
+      finishedRef.current = true;
+      setDone(true);
+      onFinish({ ts: Date.now(), level: levelInfo.level, relation: levelInfo.relation, pairCount: round.length, timeSeconds: seconds, errors, completed: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matched]);
+
+  // Recalcula as linhas dos pares já ligados sempre que algo muda —
+  // lê a posição real dos itens na tela (via ref), então continua
+  // correto mesmo se a página redimensionar.
+  useLayoutEffect(() => {
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    const next = {};
+    matched.forEach(({ leftIdx, rightIdx }) => {
+      const a = itemRefs.current[`left-${leftIdx}`]?.getBoundingClientRect();
+      const b = itemRefs.current[`right-${rightIdx}`]?.getBoundingClientRect();
+      if (!a || !b) return;
+      next[`${leftIdx}-${rightIdx}`] = {
+        x1: a.right - containerRect.left, y1: a.top + a.height / 2 - containerRect.top,
+        x2: b.left - containerRect.left, y2: b.top + b.height / 2 - containerRect.top,
+      };
+    });
+    setLineCoords(next);
+  }, [matched]);
+
+  function attemptMatch(leftPos, rightPos) {
+    if (matched.some((m) => m.leftIdx === leftPos || m.rightIdx === rightPos)) return;
+    setAttempts((a) => a + 1);
+    const leftPairIdx = leftOrder[leftPos];
+    const rightPairIdx = rightOrder[rightPos];
+    if (leftPairIdx === rightPairIdx) {
+      setMatched((prev) => [...prev, { leftIdx: leftPos, rightIdx: rightPos }]);
+    } else {
+      setErrors((e) => e + 1);
+      setShakeLeft(leftPos);
+      setShakeRight(rightPos);
+      setTimeout(() => { setShakeLeft(null); setShakeRight(null); }, 500);
+    }
+  }
+
+  function handleLeftPointerDown(e, leftPos) {
+    if (done || matched.some((m) => m.leftIdx === leftPos)) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const start = { x: rect.right - containerRect.left, y: rect.top + rect.height / 2 - containerRect.top };
+    dragRef.current = { leftPos, moved: false, start };
+  }
+
+  function handlePointerMove(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const x2 = e.clientX - containerRect.left;
+    const y2 = e.clientY - containerRect.top;
+    if (!d.moved && Math.hypot(x2 - d.start.x, y2 - d.start.y) > 6) d.moved = true;
+    if (d.moved) setDragLine({ x1: d.start.x, y1: d.start.y, x2, y2 });
+  }
+
+  function handlePointerUp(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    setDragLine(null);
+    if (d.moved) {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const target = el && el.closest ? el.closest('[data-side="right"]') : null;
+      if (target && containerRef.current.contains(target)) {
+        attemptMatch(d.leftPos, Number(target.dataset.idx));
+      }
+    } else {
+      // toque simples: seleciona/desmarca a imagem da esquerda
+      setSelectedLeft((prev) => (prev === d.leftPos ? null : d.leftPos));
+    }
+  }
+
+  function handlePointerCancel() {
+    dragRef.current = null;
+    setDragLine(null);
+  }
+
+  function handleRightTap(rightPos) {
+    if (done || matched.some((m) => m.rightIdx === rightPos)) return;
+    if (selectedLeft !== null) {
+      attemptMatch(selectedLeft, rightPos);
+      setSelectedLeft(null);
+    }
+  }
+
+  function renderImage(item, size = 'w-14 h-14') {
+    return item.variant === 'foto'
+      ? <img src={item.imageData} alt="" className={`${size} object-cover rounded-xl`} />
+      : <span className="text-4xl">{item.emoji}</span>;
+  }
+
+  if (round.length < 2) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-6 text-center">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB] mb-4"><ChevronLeft size={20} /></button>
+        <p className="text-[#5A5A5A]">Pares insuficientes pra esse nível — cadastre mais pares na Área dos pais.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative max-w-md mx-auto px-4 pt-6">
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={onExit} className="p-2 rounded-xl bg-white border border-[#EADFCB]"><ChevronLeft size={20} /></button>
+        <div className="text-sm font-semibold text-[#5A5A5A]">Ligar os itens · {levelInfo.label}</div>
+        <div className="w-9" />
+      </div>
+      {done && <ConfettiBurst />}
+
+      {showTimer && (
+        <div className="text-center text-sm text-[#999] mb-2">⏱ {seconds}s · {errors} erros</div>
+      )}
+      <p className="text-center text-xs text-[#999] mb-3">Arraste de um item pro outro que combina — ou toque em um de cada lado</p>
+
+      <div ref={containerRef} className="relative flex justify-between gap-8 select-none">
+        <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
+          {Object.entries(lineCoords).map(([key, c]) => (
+            <line key={key} x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2} stroke="#4C9A6A" strokeWidth={4} strokeLinecap="round" />
+          ))}
+          {dragLine && (
+            <line x1={dragLine.x1} y1={dragLine.y1} x2={dragLine.x2} y2={dragLine.y2} stroke="#2F5F82" strokeWidth={3} strokeDasharray="6 4" strokeLinecap="round" />
+          )}
+        </svg>
+
+        <div className="flex flex-col gap-3 z-[1]">
+          {leftOrder.map((pairIdx, pos) => {
+            const isMatched = matched.some((m) => m.leftIdx === pos);
+            const isSelected = selectedLeft === pos;
+            const isShaking = shakeLeft === pos;
+            return (
+              <div
+                key={pos}
+                ref={(el) => { itemRefs.current[`left-${pos}`] = el; }}
+                data-side="left"
+                data-idx={pos}
+                onPointerDown={(e) => handleLeftPointerDown(e, pos)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
+                className={`touch-none w-16 h-16 rounded-2xl border-2 bg-white flex items-center justify-center transition-transform duration-150 ${isMatched ? 'border-[#4C9A6A] opacity-70' : isSelected ? 'border-[#2F5F82] scale-105 cursor-grab' : 'border-[#EADFCB] cursor-grab'} ${isShaking ? 'tea-shake' : ''}`}
+              >
+                {renderImage(round[pairIdx].a)}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-3 z-[1]">
+          {rightOrder.map((pairIdx, pos) => {
+            const isMatched = matched.some((m) => m.rightIdx === pos);
+            const isShaking = shakeRight === pos;
+            return (
+              <div
+                key={pos}
+                ref={(el) => { itemRefs.current[`right-${pos}`] = el; }}
+                data-side="right"
+                data-idx={pos}
+                onClick={() => handleRightTap(pos)}
+                className={`w-16 h-16 rounded-2xl border-2 bg-white flex items-center justify-center cursor-pointer transition-transform duration-150 ${isMatched ? 'border-[#4C9A6A] opacity-70' : 'border-[#EADFCB]'} ${isShaking ? 'tea-shake' : ''}`}
+              >
+                {renderImage(round[pairIdx].b)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {done && (
+        <div className="tea-fadein text-center mt-6">
+          <div className="text-4xl mb-2">🎉</div>
+          <p className="font-bold text-[#2F5F82] mb-3">Muito bem! Todos os pares ligados!</p>
         </div>
       )}
     </div>
@@ -2636,7 +3302,7 @@ function SubscriptionDueBanner({ onGoToSubscription }) {
   );
 }
 
-function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
+function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, wordbuildSubjects, onSaveWordbuildSubjects, wordbuildResults, matchlinesSubjects, onSaveMatchlinesSubjects, matchlinesResults, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
   const [tab, setTab] = useState('botoes');
   return (
     <div className="max-w-4xl mx-auto px-4 pt-6">
@@ -2661,13 +3327,24 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
       </div>
       <div key={tab} className="tea-fadein">
         {tab === 'botoes' && <ButtonsManager buttons={buttons} onSave={onSaveButtons} />}
-        {tab === 'jogos' && <GamesManager customSubjects={customSubjects} onSave={onSaveSubjects} />}
+        {tab === 'jogos' && (
+          <GamesManager
+            customSubjects={customSubjects}
+            onSave={onSaveSubjects}
+            wordbuildSubjects={wordbuildSubjects}
+            onSaveWordbuildSubjects={onSaveWordbuildSubjects}
+            matchlinesSubjects={matchlinesSubjects}
+            onSaveMatchlinesSubjects={onSaveMatchlinesSubjects}
+          />
+        )}
         {tab === 'config' && <SettingsPanel settings={settings} onSave={onSaveSettings} onRequestPinChange={onRequestPinChange} responsavel={responsavel} onLogout={onLogout} />}
         {tab === 'analise' && (
           <Analytics
             logs={logs}
             puzzleResults={puzzleResults}
             memoryResults={memoryResults}
+            wordbuildResults={wordbuildResults}
+            matchlinesResults={matchlinesResults}
             buttons={buttons}
             readiness={readiness}
             onGoToButtons={() => setTab('botoes')}
@@ -2678,7 +3355,7 @@ function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, pu
   );
 }
 
-function GamesManager({ customSubjects, onSave }) {
+function GamesManager({ customSubjects, onSave, wordbuildSubjects, onSaveWordbuildSubjects, matchlinesSubjects, onSaveMatchlinesSubjects }) {
   const [label, setLabel] = useState('');
   const [imageData, setImageData] = useState(null);
 
@@ -2730,7 +3407,7 @@ function GamesManager({ customSubjects, onSave }) {
       </div>
 
       <h3 className="font-bold mb-3">Figuras personalizadas ({customSubjects.length})</h3>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
         {customSubjects.map((s) => (
           <div key={s.key} className="bg-white border border-[#EADFCB] rounded-2xl p-3 flex items-center gap-2">
             <img src={s.imageData} alt={s.label} className="w-12 h-12 object-cover rounded-xl" />
@@ -2740,6 +3417,335 @@ function GamesManager({ customSubjects, onSave }) {
         ))}
         {customSubjects.length === 0 && (
           <p className="text-sm text-[#999] col-span-full">Nenhuma figura personalizada ainda — os jogos usam só as 6 figuras padrão.</p>
+        )}
+      </div>
+
+      <WordBuildManager subjects={wordbuildSubjects} onSave={onSaveWordbuildSubjects} />
+
+      <div className="h-px bg-[#EADFCB] my-8" />
+
+      <MatchLinesManager subjects={matchlinesSubjects} onSave={onSaveMatchlinesSubjects} />
+    </div>
+  );
+}
+
+// Um pequeno seletor de imagem (emoji ou foto) reutilizado duas vezes
+// dentro de um mesmo par (imagem A / imagem B) — extraído porque
+// MatchLinesManager precisa de dois desses lado a lado.
+function MiniImagePicker({ label, mode, onModeChange, emoji, onEmojiChange, imageData, onImageChange, accent }) {
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onImageChange(reader.result);
+    reader.readAsDataURL(file);
+  }
+  return (
+    <div className="border border-[#EEE] rounded-xl p-3">
+      <p className="text-xs font-semibold text-[#5A5A5A] mb-2">{label}</p>
+      <div className="flex gap-2 mb-2">
+        <button
+          type="button"
+          onClick={() => onModeChange('emoji')}
+          className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold border ${mode === 'emoji' ? 'text-white' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          style={mode === 'emoji' ? { backgroundColor: accent, borderColor: accent } : undefined}
+        >
+          🙂 Emoji
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange('foto')}
+          className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1 ${mode === 'foto' ? 'text-white' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          style={mode === 'foto' ? { backgroundColor: accent, borderColor: accent } : undefined}
+        >
+          <ImagePlus size={14} /> Foto
+        </button>
+      </div>
+      {mode === 'emoji' ? (
+        <input
+          value={emoji}
+          onChange={(e) => onEmojiChange(e.target.value)}
+          placeholder="Emoji"
+          maxLength={8}
+          className="text-2xl w-full h-12 text-center border border-[#DDD] rounded-lg"
+        />
+      ) : (
+        <div>
+          <label className="inline-flex items-center gap-2 text-xs text-[#5A5A5A] cursor-pointer bg-[#F3F0EA] px-2 py-1.5 rounded-lg">
+            <ImagePlus size={14} /> {imageData ? 'Trocar foto' : 'Escolher foto'}
+            <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
+          </label>
+          {imageData && <img src={imageData} alt="" className="w-12 h-12 object-cover rounded-lg border-2 border-[#EADFCB] mt-2" />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MATCHLINES_RELATION_META = {
+  identico: { label: 'Idêntico', color: '#2F8F6E' },
+  categoria: { label: 'Categoria', color: '#3E7CB1' },
+  associativo: { label: 'Associativo', color: '#B15E3E' },
+};
+
+// Seção separada dentro de GamesManager pro jogo "Ligar os Itens" —
+// cada par cadastrado tem duas imagens (A e B) e um tipo de relação, que
+// decide em qual dos 3 níveis (hierarquia VB-MAPP) o par aparece.
+function MatchLinesManager({ subjects, onSave }) {
+  const [label, setLabel] = useState('');
+  const [relation, setRelation] = useState('identico');
+  const [aMode, setAMode] = useState('emoji');
+  const [aEmoji, setAEmoji] = useState('🍎');
+  const [aImage, setAImage] = useState(null);
+  const [bMode, setBMode] = useState('emoji');
+  const [bEmoji, setBEmoji] = useState('🍌');
+  const [bImage, setBImage] = useState(null);
+
+  function resetForm() {
+    setLabel('');
+    setAImage(null); setBImage(null);
+  }
+
+  function addPair() {
+    if (aMode === 'foto' && !aImage) return;
+    if (bMode === 'foto' && !bImage) return;
+    const newPair = {
+      key: 'ml-' + Date.now(),
+      label: label.trim() || MATCHLINES_RELATION_META[relation].label,
+      relation,
+      a: { variant: aMode, emoji: aMode === 'emoji' ? aEmoji : null, imageData: aMode === 'foto' ? aImage : null },
+      b: { variant: bMode, emoji: bMode === 'emoji' ? bEmoji : null, imageData: bMode === 'foto' ? bImage : null },
+    };
+    onSave([...subjects, newPair]);
+    resetForm();
+  }
+
+  function removePair(key) {
+    onSave(subjects.filter((s) => s.key !== key));
+  }
+
+  const disabled = (aMode === 'foto' && !aImage) || (bMode === 'foto' && !bImage);
+
+  return (
+    <div>
+      <div className="bg-white rounded-2xl border-2 border-[#BFD9EC] p-4 mb-6">
+        <h3 className="font-bold mb-1 flex items-center gap-2 text-[#2F5F82]">
+          <span className="text-xl">🔗</span> Pares para o jogo Ligar os Itens
+        </h3>
+        <p className="text-sm text-[#5A5A5A] mb-3">
+          Cadastre pares de imagens e diga o tipo de relação entre elas — o jogo libera os níveis
+          nessa ordem: idêntico primeiro, depois categoria, depois associativo/funcional.
+        </p>
+
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Nome do par (opcional, ex: Maçã e banana)"
+          className="border border-[#DDD] rounded-xl px-3 py-2 w-full mb-3"
+        />
+
+        <p className="text-sm text-[#5A5A5A] mb-2">Tipo de relação:</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {Object.entries(MATCHLINES_RELATION_META).map(([key, meta]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setRelation(key)}
+              className="px-3 py-1.5 rounded-full text-sm font-semibold border transition-all duration-200"
+              style={relation === key
+                ? { backgroundColor: meta.color, color: '#fff', borderColor: meta.color }
+                : { backgroundColor: '#fff', borderColor: meta.color, color: meta.color }}
+            >
+              {meta.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <MiniImagePicker
+            label="Imagem A"
+            mode={aMode} onModeChange={setAMode}
+            emoji={aEmoji} onEmojiChange={setAEmoji}
+            imageData={aImage} onImageChange={setAImage}
+            accent="#2F5F82"
+          />
+          <MiniImagePicker
+            label="Imagem B"
+            mode={bMode} onModeChange={setBMode}
+            emoji={bEmoji} onEmojiChange={setBEmoji}
+            imageData={bImage} onImageChange={setBImage}
+            accent="#2F5F82"
+          />
+        </div>
+
+        <button
+          onClick={addPair}
+          disabled={disabled}
+          className="tea-shimmer-btn bg-[#2F5F82] text-white rounded-xl px-4 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+        >
+          <Plus size={16} /> Adicionar par
+        </button>
+      </div>
+
+      <h3 className="font-bold mb-3">Pares cadastrados ({subjects.length})</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {subjects.map((s) => (
+          <div key={s.key} className="bg-white border border-[#EADFCB] rounded-2xl p-3 flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              {s.a.variant === 'foto' ? <img src={s.a.imageData} alt="" className="w-10 h-10 object-cover rounded-lg" /> : <span className="text-2xl">{s.a.emoji}</span>}
+              <span className="text-[#999]">↔</span>
+              {s.b.variant === 'foto' ? <img src={s.b.imageData} alt="" className="w-10 h-10 object-cover rounded-lg" /> : <span className="text-2xl">{s.b.emoji}</span>}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold">{s.label}</div>
+              <div className="text-xs" style={{ color: MATCHLINES_RELATION_META[s.relation].color }}>{MATCHLINES_RELATION_META[s.relation].label}</div>
+            </div>
+            <button onClick={() => removePair(s.key)} className="text-[#C0605A] p-1"><Trash2 size={16} /></button>
+          </div>
+        ))}
+        {subjects.length === 0 && (
+          <p className="text-sm text-[#999] col-span-full">Nenhum par cadastrado ainda — adicione pares acima pra liberar o jogo Ligar os Itens.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Seção separada dentro de GamesManager, deliberadamente com cor/ícone
+// diferentes das figuras de quebra-cabeça/memória acima — reforça que é
+// um repertório de outro jogo (Formar a Palavra), não mais fotos pros
+// mesmos jogos de sempre.
+function WordBuildManager({ subjects, onSave }) {
+  const [word, setWord] = useState('');
+  const [phrase, setPhrase] = useState('');
+  const [iconMode, setIconMode] = useState('emoji'); // 'emoji' | 'foto'
+  const [emoji, setEmoji] = useState('⭐');
+  const [imageData, setImageData] = useState(null);
+  const EMOJI_CHOICES = ['⭐', '🍎', '🐶', '🚗', '🏠', '⚽', '🎈', '🌞', '🍌', '🐱', '📚', '🎵'];
+
+  function handleImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setImageData(reader.result);
+    reader.readAsDataURL(file);
+  }
+
+  function chooseIconMode(mode) {
+    setIconMode(mode);
+    if (mode !== 'foto') setImageData(null);
+  }
+
+  function addWord() {
+    const cleanWord = word.trim();
+    if (!cleanWord) return;
+    if (iconMode === 'foto' && !imageData) return;
+    const newSubject = {
+      key: 'wb-' + Date.now(),
+      word: cleanWord,
+      phrase: phrase.trim() || cleanWord,
+      iconVariant: iconMode,
+      emoji: iconMode === 'emoji' ? emoji : null,
+      imageData: iconMode === 'foto' ? imageData : null,
+    };
+    onSave([...subjects, newSubject]);
+    setWord(''); setPhrase(''); setImageData(null);
+  }
+
+  function removeWord(key) {
+    onSave(subjects.filter((s) => s.key !== key));
+  }
+
+  return (
+    <div>
+      <div className="bg-white rounded-2xl border-2 border-[#D9C4EC] p-4 mb-6">
+        <h3 className="font-bold mb-1 flex items-center gap-2 text-[#6B4A96]">
+          <span className="text-xl">🔤</span> Palavras para o jogo Formar a Palavra
+        </h3>
+        <p className="text-sm text-[#5A5A5A] mb-3">
+          A criança vê a palavra completa e uma imagem, e arrasta as letras embaralhadas pra
+          copiar formando a palavra — não é adivinhação, é prática de cópia com apoio visual.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <input value={word} onChange={(e) => setWord(e.target.value)} placeholder="Palavra (ex: BOLA)" className="border border-[#DDD] rounded-xl px-3 py-2" />
+          <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Frase falada ao concluir (opcional)" className="border border-[#DDD] rounded-xl px-3 py-2" />
+        </div>
+
+        <p className="text-sm text-[#5A5A5A] mb-2">Imagem da palavra — escolha um jeito:</p>
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => chooseIconMode('emoji')}
+            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 ${iconMode === 'emoji' ? 'bg-[#6B4A96] text-white border-[#6B4A96]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          >
+            🙂 Emoji
+          </button>
+          <button
+            onClick={() => chooseIconMode('foto')}
+            className={`flex-1 px-3 py-2 rounded-xl text-sm font-semibold border transition-all duration-200 flex items-center justify-center gap-1 ${iconMode === 'foto' ? 'bg-[#6B4A96] text-white border-[#6B4A96]' : 'bg-white border-[#DDD] text-[#5A5A5A]'}`}
+          >
+            <ImagePlus size={16} /> Foto
+          </button>
+        </div>
+
+        {iconMode === 'emoji' && (
+          <div className="tea-fadein mb-3">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                value={emoji}
+                onChange={(e) => setEmoji(e.target.value)}
+                placeholder="Digite ou cole um emoji"
+                maxLength={8}
+                className="text-2xl w-16 h-12 text-center border border-[#DDD] rounded-xl"
+              />
+              <span className="text-xs text-[#999]">Ou escolha um dos comuns:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {EMOJI_CHOICES.map((em) => (
+                <button
+                  key={em}
+                  onClick={() => setEmoji(em)}
+                  className={`text-2xl w-10 h-10 rounded-xl border transition-all duration-150 ${emoji === em ? 'border-[#6B4A96] bg-[#F1E9F8]' : 'border-[#EEE]'}`}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {iconMode === 'foto' && (
+          <div className="tea-fadein mb-3">
+            <label className="inline-flex items-center gap-2 text-sm text-[#5A5A5A] mb-2 cursor-pointer bg-[#F3F0EA] px-3 py-2 rounded-xl">
+              <ImagePlus size={16} /> {imageData ? 'Trocar foto' : 'Escolher foto'}
+              <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
+            </label>
+            {imageData && <img src={imageData} alt="preview" className="w-16 h-16 object-cover rounded-2xl border-2 border-[#EADFCB] block" />}
+            {!imageData && <p className="text-xs text-[#B15E3E]">Escolha uma foto para poder salvar a palavra.</p>}
+          </div>
+        )}
+
+        <button
+          onClick={addWord}
+          disabled={!word.trim() || (iconMode === 'foto' && !imageData)}
+          className="tea-shimmer-btn bg-[#6B4A96] text-white rounded-xl px-4 py-2 font-semibold flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
+        >
+          <Plus size={16} /> Adicionar palavra
+        </button>
+      </div>
+
+      <h3 className="font-bold mb-3">Palavras cadastradas ({subjects.length})</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {subjects.map((s) => (
+          <div key={s.key} className="bg-white border border-[#EADFCB] rounded-2xl p-3 flex items-center gap-2">
+            {s.iconVariant === 'foto'
+              ? <img src={s.imageData} alt={s.word} className="w-12 h-12 object-cover rounded-xl" />
+              : <span className="text-3xl w-12 h-12 flex items-center justify-center">{s.emoji}</span>}
+            <span className="text-sm font-semibold flex-1">{s.word}</span>
+            <button onClick={() => removeWord(s.key)} className="text-[#C0605A] p-1"><Trash2 size={16} /></button>
+          </div>
+        ))}
+        {subjects.length === 0 && (
+          <p className="text-sm text-[#999] col-span-full">Nenhuma palavra cadastrada ainda — adicione palavras acima pra liberar o jogo Formar a Palavra.</p>
         )}
       </div>
     </div>
@@ -3454,7 +4460,7 @@ function ReadinessCard({ readiness, onGoToButtons }) {
   );
 }
 
-function Analytics({ logs, puzzleResults, memoryResults = [], buttons, readiness, onGoToButtons }) {
+function Analytics({ logs, puzzleResults, memoryResults = [], wordbuildResults = [], matchlinesResults = [], buttons, readiness, onGoToButtons }) {
   const days = lastNDays(7);
   const dayLabel = (d) => d.slice(5).split('-').reverse().join('/');
 
@@ -3496,13 +4502,15 @@ function Analytics({ logs, puzzleResults, memoryResults = [], buttons, readiness
   const activeDays = new Set(logs.map((l) => new Date(l.ts).toISOString().slice(0, 10))).size;
   const totalPuzzlesCompleted = puzzleResults.filter((r) => r.completed).length;
   const totalMemoryCompleted = memoryResults.filter((r) => r.completed).length;
+  const totalWordbuildCompleted = wordbuildResults.filter((r) => r.completed).length;
+  const totalMatchlinesCompleted = matchlinesResults.filter((r) => r.completed).length;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="Dias ativos" value={activeDays} />
         <StatCard label="Botão mais usado" value={topButton ? `${topButton.emoji || '📷'} ${topButton.label}` : '—'} />
-        <StatCard label="Jogos concluídos" value={totalPuzzlesCompleted + totalMemoryCompleted} />
+        <StatCard label="Jogos concluídos" value={totalPuzzlesCompleted + totalMemoryCompleted + totalWordbuildCompleted + totalMatchlinesCompleted} />
         <StatCard label="Total de toques" value={logs.filter((l) => l.type === 'button').length} />
       </div>
 
