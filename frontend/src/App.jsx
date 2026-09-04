@@ -788,6 +788,26 @@ function fallbackSpeak(text, onEnd) {
 // localStorage) pra sempre, mesmo com o texto idêntico.
 const AUDIO_CACHE_VERSION = 2;
 
+// Constrói um <audio> a partir do base64 via Blob + URL.createObjectURL
+// — NÃO usa `data:audio/mpeg;base64,...` direto. Achado testando contra
+// o motor do Safari de verdade (Playwright + WebKit): `new Audio(data:URI)`
+// falha lá com `NotSupportedError` mesmo sendo um MP3 válido (funciona
+// em Chrome/Firefox, mas o Safari é mais estrito com data: URI em
+// elementos de mídia) — Blob URL é o caminho confiável nos três.
+// `URL.revokeObjectURL` ao terminar/dar erro evita vazar memória.
+function createAudioFromBase64(base64) {
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'audio/mpeg' });
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  const revoke = () => URL.revokeObjectURL(url);
+  audio.addEventListener('ended', revoke, { once: true });
+  audio.addEventListener('error', revoke, { once: true });
+  return audio;
+}
+
 // `onBlocked` (opcional) é chamado quando o navegador recusa autoplay
 // (comum pra áudio não-mudo disparado fora de um clique direto — ex:
 // depois de um fetch assíncrono, como na WelcomeScreen/TutiBubble) —
@@ -795,7 +815,7 @@ const AUDIO_CACHE_VERSION = 2;
 // pessoa não ouviu nada. Botões (clique direto do usuário) não passam
 // `onBlocked`, então mantêm o comportamento de sempre (cai pra onEnd).
 function playAudioBase64(base64, onEnd, onBlocked) {
-  const audio = new Audio(`data:audio/mpeg;base64,${base64}`);
+  const audio = createAudioFromBase64(base64);
   if (onEnd) { audio.onended = onEnd; audio.onerror = onEnd; }
   audio.play().catch(() => {
     if (onBlocked) onBlocked(audio);
@@ -1698,12 +1718,9 @@ function WelcomeScreen({ childName, onFinish }) {
     }
     setVideoEnded(false);
     if (!audioBase64) return;
-    // Cria um elemento de áudio NOVO em vez de reaproveitar o antigo
-    // (`audioElRef.current`) — testado em Safari (WebKit) real: um
-    // elemento que já teve o autoplay recusado uma vez continua sendo
-    // recusado mesmo chamando `.play()` de novo dentro de um toque de
-    // verdade; um elemento criado direto no gesto, do zero, funciona.
-    const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+    // Elemento de áudio NOVO (não reaproveita `audioElRef.current`) —
+    // ajuda em geral a evitar estado preso de uma tentativa anterior.
+    const audio = createAudioFromBase64(audioBase64);
     audio.onended = () => setAudioEnded(true);
     audio.onerror = () => setAudioEnded(true);
     audioElRef.current = audio;
@@ -2177,12 +2194,8 @@ function TutiBubble({ phrase, tabKey }) {
 
   function handleTapToPlayAudio(e) {
     e.stopPropagation();
-    // Elemento de áudio NOVO, criado direto no toque — ver mesmo
-    // comentário em WelcomeScreen::handleTapToPlayAudio (Safari recusa
-    // reaproveitar um elemento que já tinha sido bloqueado antes, mesmo
-    // dentro de um toque de verdade).
     if (!audioBase64Ref.current) return;
-    const audio = new Audio(`data:audio/mpeg;base64,${audioBase64Ref.current}`);
+    const audio = createAudioFromBase64(audioBase64Ref.current);
     audio.onended = close;
     audioElRef.current = audio;
     audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
