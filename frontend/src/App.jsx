@@ -1685,8 +1685,6 @@ function WelcomeScreen({ childName, onFinish }) {
   }, [ready]);
 
   function handleTapToPlayAudio() {
-    const audio = audioElRef.current;
-    if (!audio) return;
     // Reproduz a voz JUNTO com o vídeo de novo do início — sem isso, o
     // vídeo (mudo, autoplay quase nunca bloqueado) já tinha terminado
     // sozinho enquanto o áudio ficava esperando o toque, e apertar o
@@ -1699,7 +1697,17 @@ function WelcomeScreen({ childName, onFinish }) {
       } catch (e) { /* ignora */ }
     }
     setVideoEnded(false);
-    audio.play().then(() => setAudioBlocked(false)).catch(() => {});
+    if (!audioBase64) return;
+    // Cria um elemento de áudio NOVO em vez de reaproveitar o antigo
+    // (`audioElRef.current`) — testado em Safari (WebKit) real: um
+    // elemento que já teve o autoplay recusado uma vez continua sendo
+    // recusado mesmo chamando `.play()` de novo dentro de um toque de
+    // verdade; um elemento criado direto no gesto, do zero, funciona.
+    const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+    audio.onended = () => setAudioEnded(true);
+    audio.onerror = () => setAudioEnded(true);
+    audioElRef.current = audio;
+    audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
   }
 
   const finish = useCallback(() => {
@@ -2110,7 +2118,7 @@ function ChildPanel({
 // — precisa sobreviver entre sessões/dias), incrementado toda vez que a
 // pessoa entra na aba (o componente monta de novo a cada entrada, já que
 // `view === 'games'` desmonta o `GamesView` ao sair). Só renderiza a
-// bolha na 4ª, 8ª, 12ª... visita (`contador % 4 === 0`) — decisão
+// bolha na 1ª, 3ª, 5ª... visita (`contador % 2 !== 0`) — decisão
 // explícita do usuário, pra não virar um elemento repetitivo toda vez.
 //
 // `tuti-bubble-character.png` (corpo inteiro, fundo transparente) — sem
@@ -2125,6 +2133,7 @@ function TutiBubble({ phrase, tabKey }) {
   // ouvir a frase.
   const [audioBlocked, setAudioBlocked] = useState(false);
   const audioElRef = useRef(null);
+  const audioBase64Ref = useRef(null);
 
   const close = useCallback(() => {
     setClosing(true);
@@ -2151,6 +2160,7 @@ function TutiBubble({ phrase, tabKey }) {
       try {
         const audioBase64 = await getOrSynthesizeAudio(`tuti-bubble:${tabKey}`, phrase);
         if (cancelled) return;
+        audioBase64Ref.current = audioBase64;
         audioElRef.current = playAudioBase64(
           audioBase64,
           () => { closeTimer = setTimeout(close, 4000); },
@@ -2167,9 +2177,15 @@ function TutiBubble({ phrase, tabKey }) {
 
   function handleTapToPlayAudio(e) {
     e.stopPropagation();
-    const audio = audioElRef.current;
-    if (!audio) return;
-    audio.play().then(() => setAudioBlocked(false)).catch(() => {});
+    // Elemento de áudio NOVO, criado direto no toque — ver mesmo
+    // comentário em WelcomeScreen::handleTapToPlayAudio (Safari recusa
+    // reaproveitar um elemento que já tinha sido bloqueado antes, mesmo
+    // dentro de um toque de verdade).
+    if (!audioBase64Ref.current) return;
+    const audio = new Audio(`data:audio/mpeg;base64,${audioBase64Ref.current}`);
+    audio.onended = close;
+    audioElRef.current = audio;
+    audio.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true));
   }
 
   if (!visible) return null;
