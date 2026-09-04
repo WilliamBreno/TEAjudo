@@ -683,11 +683,14 @@ autoplay é sobre ter ou não um **gesto recente do usuário**, não sobre
 o áudio "estar pronto" — mostrar a tela mais tarde não muda isso. É bem
 mais raro logo após criar conta/logar (o clique em "Criar conta"/
 "Entrar" já conta como gesto), e continua comum ao **recarregar a
-página** sem nenhum toque anterior (confirmado meio a Playwright contra
-produção: autoplay funciona liso após criar conta, mas cai no botão
-manual após um `reload()` puro, mesmo em Chromium desktop — pior ainda
-em Safari/iOS). Não existe forma de contornar isso via código; é
-proteção do próprio navegador contra sites barulhentos.
+página** sem nenhum toque anterior (confirmado via Playwright contra
+produção, em Chrome desktop/Android com política padrão e com política
+de autoplay estrita forçada, e Firefox desktop: autoplay funciona liso
+após criar conta, mas cai no botão manual após um `reload()` puro em
+todos eles — ver nota sobre testar Safari/WebKit logo abaixo, essa
+combinação não pôde ser validada da mesma forma). Não existe forma de
+contornar isso via código; é proteção do próprio navegador contra sites
+barulhentos.
 
 Enquanto `audioBlocked` for `true`, a tela **não fecha sozinha** (nem
 pelo timer de 800ms depois do vídeo acabar, nem pela rede de segurança de
@@ -698,6 +701,40 @@ depois disso ouvia só a voz solta, sem a apresentação (vídeo já tinha
 acabado, às vezes a tela já tinha até fechado). `handleTapToPlayAudio`
 reinicia o vídeo do zero (`currentTime = 0` + `play()`) junto de tocar
 o áudio, pra voz e apresentação sempre andarem juntas.
+
+**Nota importante pra quem for testar áudio de novo: WebKit do
+Playwright no Windows não consegue tocar áudio via `blob:` URL —
+isso não é bug do app, é limitação do ambiente de teste.** Investigando
+um relato de que "Tocar a voz do Tuti" não liberava o áudio no Safari,
+isolei o problema numa página HTML mínima (sem React, sem o app
+inteiro): mesmo um WAV sintético trivial, servido por uma URL normal,
+falha com `NotSupportedError` ao tocar quando convertido pra `blob:`
+URL primeiro — mas a **mesma URL direta (sem passar por blob) toca
+perfeitamente** no mesmo teste. Ou seja, não é sobre formato de áudio
+(testei MP3 e WAV, os dois falham do mesmo jeito), não é sobre
+`data:` URI vs `blob:` URI (os dois falham), não é sobre reaproveitar
+elemento `<audio>` — é que o build de WebKit que o Playwright empacota
+pra Windows/Linux não usa o mesmo motor de mídia nativo do Safari de
+verdade em Mac/iPhone (que usa o AVFoundation da própria Apple, com
+suporte completo); `blob:` URL pra áudio é funcionalidade padrão da
+web, amplamente usada e suportada no Safari real. Resultado prático:
+**testes automatizados de áudio contra `webkit` do Playwright nesta
+máquina não são confiáveis** — qualquer "bug só no Safari" encontrado
+assim precisa ser validado num Mac/iPhone de verdade (ou CI rodando em
+macOS) antes de virar código de produção; passei por esse mesmo
+engano, "corrigindo" o app pra um problema que só existia no ambiente
+de teste. Chromium e Firefox do Playwright não têm essa limitação —
+testes de áudio contra eles são confiáveis.
+
+`playAudioBase64`/`createAudioFromBase64` (`App.jsx`) usam `Blob` +
+`URL.createObjectURL()` pra construir o `<audio>`, não `data:` URI
+direto — decisão mantida mesmo depois do achado acima (não resolveu o
+problema, que era do ambiente de teste, não do código), porque ainda é
+a prática melhor de qualquer forma: payload menor que base64 em
+`data:` URI, mais alinhado com o padrão da web, sem nenhuma desvantagem
+observada nos navegadores que puderam ser testados de verdade (Chrome,
+Firefox). `URL.revokeObjectURL` roda ao terminar/dar erro pra não
+vazar memória.
 
 `TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
 arquitetado pra qualquer aba que não seja o `ChildPanel`; usado em
