@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../lib/session.js';
-import { getSubscriptionByResponsavel, renewSubscription, toSqlDateTime, diasRestantesAte } from '../lib/subscription.js';
+import { getSubscriptionByResponsavel, renewSubscription, toSqlDateTime, diasRestantesAte, isEmailIsento } from '../lib/subscription.js';
 import { createPendingPagamento, findPagamentoById, markPagamentoPago } from '../lib/pagamentos.js';
 import { createPaymentLink, checkPayment, isCheckoutConfigured } from '../lib/infinitepay.js';
 
@@ -24,6 +24,24 @@ router.get('/status', requireAuth, async (req, res) => {
   if (!assinatura) {
     return res.status(404).json({ error: 'Assinatura não encontrada.' });
   }
+  // Conta isenta: sempre responde 'ativa', nunca 'atraso'/'bloqueada' —
+  // é o único lugar que o frontend consulta pra decidir se bloqueia o
+  // painel (`isBlocked` em TEAjudoApp), então isso basta pra essas contas
+  // nunca verem a tela de regularização, mesmo que o vencimento salvo no
+  // banco já tenha passado. `vencimentoEm`/`diasRestantes` ficam `null`
+  // pra não mostrar uma data no passado com status "ativa" (confuso) —
+  // ver isento: true no SubscriptionCard, que troca a UI inteira por uma
+  // mensagem fixa em vez de tentar formatar isso.
+  if (isEmailIsento(req.responsavel.email)) {
+    return res.json({
+      status: 'ativa',
+      valorCentavos: assinatura.valor_centavos,
+      vencimentoEm: null,
+      ultimoPagamentoEm: assinatura.ultimo_pagamento_em,
+      diasRestantes: null,
+      isento: true,
+    });
+  }
   const diasRestantes = diasRestantesAte(assinatura.vencimento_em);
   res.json({
     status: assinatura.status,
@@ -35,6 +53,9 @@ router.get('/status', requireAuth, async (req, res) => {
 });
 
 router.post('/checkout', requireAuth, async (req, res) => {
+  if (isEmailIsento(req.responsavel.email)) {
+    return res.status(400).json({ error: 'Esta conta é isenta de pagamento — nenhuma cobrança é necessária.' });
+  }
   if (!isCheckoutConfigured()) {
     return res.status(503).json({ error: 'Pagamento não configurado no servidor.' });
   }

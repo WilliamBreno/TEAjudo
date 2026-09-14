@@ -14,6 +14,27 @@ export const TRIAL_DAYS = 7;
 export const DIAS_PARA_ATRASO = 1;
 export const DIAS_PARA_BLOQUEAR = 2;
 
+// Contas isentas de pagamento — pedido explícito do dono do app, pra
+// contas de uso pessoal/família nunca caírem em atraso/bloqueio, mesmo
+// que o vencimento no banco fique no passado. Lista curta e hard-coded
+// de propósito (não é uma feature de assinatura grátis configurável por
+// admin, só uma exceção pontual) — normalizado igual
+// `lib/responsaveis.js::normalizeEmail` (minúsculo, sem espaço nas
+// pontas), já que e-mail é sempre comparado assim no resto do backend.
+// Isso NÃO muda o status salvo no banco (o cron/`refreshOverdueStatus`
+// continua rodando normal pra essas contas também) — a isenção acontece
+// só na resposta de `GET /api/subscription/status`/`POST /checkout`
+// (`routes/subscription.js`), que é o único lugar que o frontend
+// consulta pra decidir se bloqueia o painel.
+const EMAILS_ISENTOS = new Set([
+  'williamdevpy@gmail.com',
+  'josienecruz.14@gmail.com',
+]);
+
+export function isEmailIsento(email) {
+  return EMAILS_ISENTOS.has(String(email || '').trim().toLowerCase());
+}
+
 export function toSqlDateTime(date) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }

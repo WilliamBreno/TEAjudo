@@ -639,16 +639,51 @@ de dentro da Área dos pais). Enquanto `subscriptionStatus` ainda é `null`
 ("não sabemos ainda"), o app **não bloqueia** — evita um flash da tela de
 bloqueio pra quem está em dia; o pior caso é um instante a mais do
 ChildPanel visível antes do status confirmar, inofensivo. Quando
-`status === 'bloqueada'`, `RegularizationScreen` substitui tanto o
-`ChildPanel` quanto o `GamesView` (`view === 'panel' | 'games'`) — mas
+`status === 'bloqueada'`, `RegularizationScreen` substitui o `ChildPanel`,
+o `GamesView` **e** o `ActivitiesView` (`view === 'panel' | 'games' |
+'activities'` — as 3 telas que a criança pode abrir sozinha) — mas
 `view === 'parentGate' | 'securitySetup' | 'parent'` são estados
 irmãos, não filhos do ChildPanel, então continuam alcançáveis
 normalmente pelo mesmo botão de cadeado de sempre, exatamente como o
 enunciado da fase pediu ("Área dos pais continua acessível via PIN").
-`RegularizationScreen` é deliberadamente neutra pra criança — nunca
-menciona assinatura, pagamento ou dinheiro, só "hora de uma pausa" e o
-mesmo botão de entrar na Área dos pais; quem resolve isso é o
-responsável, não a criança lendo a tela.
+
+**`RegularizationScreen` deixou de ser neutra pra criança — decisão
+revertida a pedido explícito do usuário.** Antes a tela nunca mencionava
+assinatura/pagamento/dinheiro (só "hora de uma pausa" + botão genérico
+pra Área dos pais), de propósito. Agora informa o motivo real por
+extenso ("A assinatura do TEAjudo venceu", com o valor mensal) e tem um
+botão "Fazer pagamento" bem em destaque, além do link discreto "Entrar
+na Área dos pais" que já existia. **O botão de pagamento continua atrás
+do PIN** — não dá pra gerar um link de pagamento de verdade sem passar
+pelo `ParentGate`; a diferença é que ele já manda pra aba "Configurações"
+direto (onde mora o `SubscriptionCard` com o botão de checkout de
+verdade), em vez de cair na aba "Botões" de sempre. Isso é feito via um
+novo estado `parentAreaInitialTab` em `TEAjudoApp` (`'botoes'` por
+padrão, `'config'` só quando vem do atalho de pagamento), passado como
+prop `initialTab` pra `ParentArea`, que inicializa seu `tab` local com
+ele. Continua sendo o responsável quem efetivamente decide/paga — só a
+mensagem e o caminho até lá ficaram mais diretos, a proteção por PIN não
+mudou.
+
+**Contas isentas de pagamento** (`backend/src/lib/subscription.js::
+isEmailIsento`) — lista curta e hard-coded de e-mails
+(`williamdevpy@gmail.com`, `josienecruz.14@gmail.com`, a pedido
+explícito do dono do app) que nunca caem em `'atraso'`/`'bloqueada'`,
+mesmo que o `vencimento_em` salvo no banco já tenha passado. A isenção
+**não** muda o que fica salvo no banco (o cron/`refreshOverdueStatus`
+continua rodando normal, sem saber dessas contas) — acontece só na
+resposta de `GET /api/subscription/status` e `POST /checkout`
+(`routes/subscription.js`), que são os únicos lugares que o frontend
+consulta pra decidir se bloqueia: `/status` responde sempre `status:
+'ativa'` + `isento: true` (com `vencimentoEm`/`diasRestantes` como
+`null`, pra não mostrar uma data vencida no passado ao lado de "ativa");
+`/checkout` recusa com 400 antes de gerar qualquer link de pagamento
+de verdade. No frontend, `SubscriptionCard` troca a UI inteira (status/
+data/botão de renovar) por uma mensagem fixa "Conta isenta de pagamento"
+quando `status.isento` vem `true` — evita formatar `vencimentoEm: null`
+como data. Se um dia isso precisar virar uma feature de verdade
+(alternável pelo próprio dono via painel admin, por exemplo, em vez de
+uma lista fixa no código), essa é a lista/local pra generalizar.
 
 ## Mascote Tuti
 Ativos em `frontend/public/tuti/` (`Logo.png`, `tuti-intro.mp4`,

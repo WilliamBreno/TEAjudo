@@ -930,6 +930,12 @@ export default function TEAjudoApp() {
   const [pinError, setPinError] = useState('');
   const [securityMode, setSecurityMode] = useState('first'); // 'first' | 'recover'
   const [securityCancelTarget, setSecurityCancelTarget] = useState('parent');
+  // Só usado pra mandar direto pra aba "Configurações" (onde mora o
+  // SubscriptionCard, com o botão de pagamento de verdade) quando o
+  // responsável entra pela Área dos pais vindo da tela de regularização —
+  // qualquer outra entrada (ícone de cadeado normal) continua abrindo na
+  // aba "Botões" de sempre.
+  const [parentAreaInitialTab, setParentAreaInitialTab] = useState('botoes');
 
   // Tela de boas-vindas do Tuti — aparece toda vez que a sessão é
   // confirmada (login novo OU recarregar a página com sessão já
@@ -1212,7 +1218,9 @@ export default function TEAjudoApp() {
 
       {(view === 'panel' || view === 'games' || view === 'activities') && isBlocked && (
         <RegularizationScreen
-          onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
+          valorCentavos={subscriptionStatus?.valorCentavos}
+          onOpenParentGate={() => { setParentAreaInitialTab('botoes'); setView('parentGate'); setPinInput(''); setPinError(''); }}
+          onGoToPayment={() => { setParentAreaInitialTab('config'); setView('parentGate'); setPinInput(''); setPinError(''); }}
         />
       )}
 
@@ -1225,7 +1233,7 @@ export default function TEAjudoApp() {
           readinessReady={!!readiness?.ready}
           onOpenGames={() => setView('games')}
           onOpenActivities={() => setView('activities')}
-          onOpenParentGate={() => { setView('parentGate'); setPinInput(''); setPinError(''); }}
+          onOpenParentGate={() => { setParentAreaInitialTab('botoes'); setView('parentGate'); setPinInput(''); setPinError(''); }}
           buttonStyle={settings.buttonStyle}
           reduceMotion={settings.reduceMotion}
           theme={settings.theme}
@@ -1301,6 +1309,7 @@ export default function TEAjudoApp() {
 
       {view === 'parent' && (
         <ParentArea
+          initialTab={parentAreaInitialTab}
           buttons={buttons}
           onSaveButtons={persistButtons}
           settings={settings}
@@ -1904,7 +1913,18 @@ function BreakOverlay({ onContinue, pin }) {
 // ("hora de uma pausa") com o mesmo botão de sempre pra entrar na Área
 // dos pais — quem resolve isso é o responsável, com o PIN, não a
 // criança lendo a tela.
-function RegularizationScreen({ onOpenParentGate }) {
+// Decisão revertida a pedido explícito do usuário: antes essa tela era
+// deliberadamente neutra pra criança (nunca mencionava assinatura/
+// pagamento/dinheiro, só "hora de uma pausa" + botão genérico pra Área
+// dos pais). Agora informa o motivo real (assinatura vencida, com o
+// valor) e já oferece um atalho direto pro pagamento — continua atrás do
+// PIN (`onGoToPayment` só abre o `ParentGate`, igual `onOpenParentGate`;
+// quem realmente inicia o checkout é o `SubscriptionCard` de sempre,
+// dentro da Área dos pais, na aba Configurações pra onde esse atalho já
+// abre direto) — não dá pra gerar um link de pagamento de verdade sem
+// passar pelo PIN, só a mensagem e o caminho ficaram mais diretos.
+function RegularizationScreen({ onOpenParentGate, onGoToPayment, valorCentavos }) {
+  const valorFormatado = valorCentavos != null ? `R$ ${(valorCentavos / 100).toFixed(2).replace('.', ',')}/mês` : null;
   return (
     <div className="min-h-svh flex flex-col items-center justify-center px-6 text-center gap-4 relative">
       <button
@@ -1917,13 +1937,17 @@ function RegularizationScreen({ onOpenParentGate }) {
       <div className="text-5xl" aria-hidden="true">💛</div>
       <h1 className="text-2xl font-bold text-[#2F6F62]">Hora de uma pausa</h1>
       <p className="max-w-sm text-[#5A5A5A]">
-        O painel está pausado por enquanto. Peça pra um responsável abrir a Área dos pais (ícone no canto) pra continuar.
+        A assinatura do TEAjudo venceu{valorFormatado ? ` (${valorFormatado})` : ''}. Peça pra um responsável
+        regularizar o pagamento pra continuar usando o painel, os jogos e as atividades.
       </p>
       <button
-        onClick={onOpenParentGate}
-        className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-6 py-3 font-semibold transition-transform active:scale-95"
+        onClick={onGoToPayment}
+        className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-6 py-3 font-semibold transition-transform active:scale-95 flex items-center gap-2"
       >
-        Área dos pais
+        <CreditCard size={18} /> Fazer pagamento
+      </button>
+      <button onClick={onOpenParentGate} className="text-sm text-[#999] underline">
+        Entrar na Área dos pais
       </button>
     </div>
   );
@@ -4053,8 +4077,8 @@ function SubscriptionDueBanner({ onGoToSubscription }) {
   );
 }
 
-function ParentArea({ buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, wordbuildSubjects, onSaveWordbuildSubjects, wordbuildResults, matchlinesSubjects, onSaveMatchlinesSubjects, matchlinesResults, coloringSubjects, onSaveColoringSubjects, paintings, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
-  const [tab, setTab] = useState('botoes');
+function ParentArea({ initialTab, buttons, onSaveButtons, settings, onSaveSettings, logs, puzzleResults, memoryResults, customSubjects, onSaveSubjects, wordbuildSubjects, onSaveWordbuildSubjects, wordbuildResults, matchlinesSubjects, onSaveMatchlinesSubjects, matchlinesResults, coloringSubjects, onSaveColoringSubjects, paintings, readiness, onRequestPinChange, onClose, responsavel, onLogout }) {
+  const [tab, setTab] = useState(initialTab || 'botoes');
   return (
     <div className="max-w-4xl mx-auto px-4 pt-6">
       <div className="flex items-center justify-between mb-4">
@@ -5292,7 +5316,13 @@ function SubscriptionCard() {
 
       {loading && <p className="text-sm text-[#999]">Carregando…</p>}
 
-      {!loading && status && (
+      {!loading && status && status.isento && (
+        <p className="text-sm text-[#2F6F62] font-semibold flex items-center gap-2">
+          <Check size={16} /> Conta isenta de pagamento — nenhuma cobrança é necessária.
+        </p>
+      )}
+
+      {!loading && status && !status.isento && (
         <>
           <p className="text-sm text-[#5A5A5A]">
             Status: <span className="font-semibold">{SUBSCRIPTION_STATUS_LABEL[status.status] || status.status}</span>
