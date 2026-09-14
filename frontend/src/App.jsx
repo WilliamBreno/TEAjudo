@@ -409,6 +409,55 @@ const BUILTIN_PUZZLE_SUBJECTS = [
   { key: 'tuti-5', label: 'Tuti 5', imageSrc: '/game-subjects/Tuti%205.png' },
 ];
 
+// Repertório embutido do Formar a Palavra — palavras curtas e comuns de
+// vocabulário inicial de CAA, pra a atividade já vir com algo pronto pra
+// jogar em vez de uma tela vazia pedindo cadastro antes de qualquer coisa
+// (pedido explícito do usuário). Só emoji (sem foto), então não depende
+// de nenhum arquivo de imagem — `word` fica sem acento de propósito (é o
+// que vira as letrinhas arrastáveis, mais simples sem acento), `phrase`
+// pode ter acentuação normal (só é falada, não decomposta em letras).
+const BUILTIN_WORDBUILD_SUBJECTS = [
+  { key: 'wb-bola', word: 'BOLA', phrase: 'Eu quero jogar bola', iconVariant: 'emoji', emoji: '⚽' },
+  { key: 'wb-casa', word: 'CASA', phrase: 'Essa é a minha casa', iconVariant: 'emoji', emoji: '🏠' },
+  { key: 'wb-sol', word: 'SOL', phrase: 'Olha o sol', iconVariant: 'emoji', emoji: '☀️' },
+  { key: 'wb-gato', word: 'GATO', phrase: 'Eu vi um gato', iconVariant: 'emoji', emoji: '🐱' },
+  { key: 'wb-agua', word: 'AGUA', phrase: 'Eu quero água', iconVariant: 'emoji', emoji: '💧' },
+  { key: 'wb-pao', word: 'PAO', phrase: 'Eu quero pão', iconVariant: 'emoji', emoji: '🍞' },
+  { key: 'wb-mae', word: 'MAE', phrase: 'Eu amo minha mãe', iconVariant: 'emoji', emoji: '👩' },
+  { key: 'wb-suco', word: 'SUCO', phrase: 'Eu quero suco', iconVariant: 'emoji', emoji: '🧃' },
+];
+
+// Repertório embutido do Ligar os Itens — 3 pares de cada tipo de relação
+// (idêntico/categoria/associativo, ver MATCHLINES_RELATION_META), pedido
+// explícito do usuário pra liberar os 3 níveis de cara (cada nível exige
+// pelo menos 2 pares daquele tipo, ver GamesView). Só emoji dos dois
+// lados, sem foto — não depende de nenhum arquivo de imagem.
+const BUILTIN_MATCHLINES_SUBJECTS = [
+  // Idêntico: as duas imagens são a mesma coisa — nível mais simples.
+  { key: 'ml-b-maca', label: 'Maçã e maçã', relation: 'identico', a: { variant: 'emoji', emoji: '🍎', imageData: null }, b: { variant: 'emoji', emoji: '🍎', imageData: null } },
+  { key: 'ml-b-cachorro', label: 'Cachorro e cachorro', relation: 'identico', a: { variant: 'emoji', emoji: '🐶', imageData: null }, b: { variant: 'emoji', emoji: '🐶', imageData: null } },
+  { key: 'ml-b-bola', label: 'Bola e bola', relation: 'identico', a: { variant: 'emoji', emoji: '⚽', imageData: null }, b: { variant: 'emoji', emoji: '⚽', imageData: null } },
+  // Categoria: coisas diferentes, mesmo grupo (frutas, animais, roupas).
+  { key: 'ml-b-frutas', label: 'Maçã e banana', relation: 'categoria', a: { variant: 'emoji', emoji: '🍎', imageData: null }, b: { variant: 'emoji', emoji: '🍌', imageData: null } },
+  { key: 'ml-b-animais', label: 'Cachorro e gato', relation: 'categoria', a: { variant: 'emoji', emoji: '🐶', imageData: null }, b: { variant: 'emoji', emoji: '🐱', imageData: null } },
+  { key: 'ml-b-roupas', label: 'Camisa e calça', relation: 'categoria', a: { variant: 'emoji', emoji: '👕', imageData: null }, b: { variant: 'emoji', emoji: '👖', imageData: null } },
+  // Associativo: relação de uso/função, mesmo sendo coisas bem diferentes.
+  { key: 'ml-b-dente', label: 'Dente e escova', relation: 'associativo', a: { variant: 'emoji', emoji: '🦷', imageData: null }, b: { variant: 'emoji', emoji: '🪥', imageData: null } },
+  { key: 'ml-b-chave', label: 'Chave e cadeado', relation: 'associativo', a: { variant: 'emoji', emoji: '🔑', imageData: null }, b: { variant: 'emoji', emoji: '🔒', imageData: null } },
+  { key: 'ml-b-chuva', label: 'Guarda-chuva e chuva', relation: 'associativo', a: { variant: 'emoji', emoji: '☂️', imageData: null }, b: { variant: 'emoji', emoji: '🌧️', imageData: null } },
+];
+
+// Figuras embutidas da atividade de Pintura — arte de linha (contorno
+// preto, sem preenchimento) em frontend/public/coloring-subjects/, mesmo
+// padrão do BUILTIN_PUZZLE_SUBJECTS acima (imageSrc, não imageData —
+// tratados de forma equivalente em todo o resto do código via
+// `s.imageData || s.imageSrc`).
+const BUILTIN_COLORING_SUBJECTS = [
+  { key: 'col-b-tuti-desenhando', label: 'Tuti desenhando', imageSrc: '/coloring-subjects/tuti-desenhando.png' },
+  { key: 'col-b-dinossaurinho', label: 'Dinossaurinho', imageSrc: '/coloring-subjects/dinossaurinho.png' },
+  { key: 'col-b-tuti-praia', label: 'Tuti na praia', imageSrc: '/coloring-subjects/tuti-na-praia.png' },
+];
+
 const PUZZLE_LEVELS = [
   { level: 1, grid: 2, label: 'Nível 1', sub: '4 peças' },
   { level: 2, grid: 3, label: 'Nível 2', sub: '9 peças' },
@@ -675,7 +724,16 @@ function floodFillCanvas(ctx, canvasW, canvasH, startX, startY, fillHex, toleran
   ctx.putImageData(imageData, 0, 0);
 }
 
-const PAINT_PALETTE = ['#C0605A', '#E08A3C', '#E4A93B', '#4C9A6A', '#3E7CB1', '#8B6BB1', '#D66E96', '#6B4226', '#2B2B2B', '#FFFFFF'];
+// 10 cores originais + 10 novas (pedido do usuário) — mantém as
+// primeiras 10 no mesmo lugar (nada muda pra quem já usava) e só
+// acrescenta variedade: amarelo mais vivo, rosa claro, turquesa, verde
+// limão, azul-marinho, roxo (diferente do #8B6BB1 já existente), marrom
+// claro/tom de pele, cinza, bege e preto puro (diferente do quase-preto
+// #2B2B2B já existente).
+const PAINT_PALETTE = [
+  '#C0605A', '#E08A3C', '#E4A93B', '#4C9A6A', '#3E7CB1', '#8B6BB1', '#D66E96', '#6B4226', '#2B2B2B', '#FFFFFF',
+  '#F2C230', '#F4A6C6', '#7FD1D9', '#8BC34A', '#1B4F72', '#9B59B6', '#D2691E', '#7F8C8D', '#F5DEB3', '#000000',
+];
 
 function shuffledArray(n) {
   const arr = Array.from({ length: n }, (_, i) => i);
@@ -1120,6 +1178,25 @@ export default function TEAjudoApp() {
     [customSubjects]
   );
 
+  // Mesmo padrão do allSubjects acima: repertório embutido + o que os pais
+  // cadastraram, só pra JOGAR (GamesView/ActivitiesView) — o GamesManager
+  // continua mostrando/editando só o que é de fato salvo no localStorage
+  // (wordbuildSubjects/matchlinesSubjects/coloringSubjects "crus"), pra
+  // não arriscar o pai "remover" sem querer uma figura/palavra embutida
+  // que na verdade mora em frontend/public, não no localStorage.
+  const allWordbuildSubjects = useMemo(
+    () => [...BUILTIN_WORDBUILD_SUBJECTS, ...wordbuildSubjects],
+    [wordbuildSubjects]
+  );
+  const allMatchlinesSubjects = useMemo(
+    () => [...BUILTIN_MATCHLINES_SUBJECTS, ...matchlinesSubjects],
+    [matchlinesSubjects]
+  );
+  const allColoringSubjects = useMemo(
+    () => [...BUILTIN_COLORING_SUBJECTS, ...coloringSubjects],
+    [coloringSubjects]
+  );
+
   const readiness = useMemo(
     () => computeReadiness({ buttons, logs, puzzleResults, memoryResults, wordbuildResults, matchlinesResults }),
     [buttons, logs, puzzleResults, memoryResults, wordbuildResults, matchlinesResults]
@@ -1267,8 +1344,8 @@ export default function TEAjudoApp() {
           onFinishMatchlines={addMatchlinesResult}
           showTimer={settings.showTimer}
           subjects={allSubjects}
-          wordbuildSubjects={wordbuildSubjects}
-          matchlinesSubjects={matchlinesSubjects}
+          wordbuildSubjects={allWordbuildSubjects}
+          matchlinesSubjects={allMatchlinesSubjects}
           matchlinesResults={matchlinesResults}
           onPlayPhrase={playPhrase}
         />
@@ -1277,8 +1354,8 @@ export default function TEAjudoApp() {
       {view === 'activities' && !isBlocked && (
         <ActivitiesView
           onBack={() => setView('panel')}
-          coloringSubjects={coloringSubjects}
-          wordbuildSubjects={wordbuildSubjects}
+          coloringSubjects={allColoringSubjects}
+          wordbuildSubjects={allWordbuildSubjects}
           onSavePainting={addPainting}
         />
       )}
@@ -3327,7 +3404,7 @@ function ActivitiesView({ onBack, coloringSubjects, wordbuildSubjects, onSavePai
                   onClick={() => setPaintSubject(s)}
                   className="bg-white border-2 border-[#EADFCB] rounded-2xl p-2 hover:border-[#B15E3E] transition-colors"
                 >
-                  <img src={s.imageData} alt={s.label} className="w-full aspect-square object-contain bg-[#F8F3FC] rounded-xl mb-1" />
+                  <img src={s.imageData || s.imageSrc} alt={s.label} className="w-full aspect-square object-contain bg-[#F8F3FC] rounded-xl mb-1" />
                   <span className="text-xs font-bold text-[#B15E3E]">{s.label}</span>
                 </button>
               ))}
@@ -3392,7 +3469,7 @@ function PaintingBoard({ subject, onExit, onSave }) {
   useEffect(() => {
     let cancelled = false;
     setSaved(false);
-    loadImageEl(subject.imageData).then((img) => {
+    loadImageEl(subject.imageData || subject.imageSrc).then((img) => {
       if (cancelled) return;
       imgRef.current = img;
       const ctx = canvasRef.current.getContext('2d');
@@ -4357,10 +4434,26 @@ function MiniImagePicker({ label, mode, onModeChange, emoji, onEmojiChange, imag
   );
 }
 
+// `description` explica a hierarquia real do VB-MAPP (ver "Decisões de
+// design" no CLAUDE.md) pro pai que está cadastrando, sem precisar saber
+// a sigla de cor — usado tanto no formulário de cadastro (abaixo) quanto
+// em qualquer outro lugar que precise explicar o que cada tipo significa.
 const MATCHLINES_RELATION_META = {
-  identico: { label: 'Idêntico', color: '#2F8F6E' },
-  categoria: { label: 'Categoria', color: '#3E7CB1' },
-  associativo: { label: 'Associativo', color: '#B15E3E' },
+  identico: {
+    label: 'Idêntico',
+    color: '#2F8F6E',
+    description: 'As duas imagens são exatamente a mesma coisa (ex: duas bolas iguais). É o nível mais simples — comece por aqui.',
+  },
+  categoria: {
+    label: 'Categoria',
+    color: '#3E7CB1',
+    description: 'As imagens são coisas diferentes, mas do mesmo grupo (ex: maçã e banana são frutas; cachorro e gato são animais).',
+  },
+  associativo: {
+    label: 'Associativo',
+    color: '#B15E3E',
+    description: 'As imagens têm uma relação de uso ou função, mesmo sendo bem diferentes entre si (ex: escova e dente — usamos a escova pra escovar o dente). O nível mais avançado.',
+  },
 };
 
 // Seção separada dentro de GamesManager pro jogo "Ligar os Itens" —
@@ -4435,6 +4528,9 @@ function MatchLinesManager({ subjects, onSave }) {
             </button>
           ))}
         </div>
+        <p className="tea-fadein text-xs text-[#5A5A5A] bg-[#F3F0EA] rounded-xl px-3 py-2 mb-3" style={{ borderLeft: `3px solid ${MATCHLINES_RELATION_META[relation].color}` }}>
+          {MATCHLINES_RELATION_META[relation].description}
+        </p>
 
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <MiniImagePicker

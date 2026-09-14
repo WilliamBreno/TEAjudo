@@ -870,6 +870,54 @@ enxerga arquivos em `public/`, só os que passam pelo bundler) — adicionar
 ou remover arquivo em `game-subjects/` exige atualizar
 `BUILTIN_PUZZLE_SUBJECTS` também.
 
+**Mesmo padrão embutido estendido pros outros 3 repertórios** (Formar a
+Palavra, Ligar os Itens, figuras de Pintura) — pedido explícito do
+usuário, pra essas atividades já virem com algo pronto pra usar em vez
+de uma tela vazia pedindo cadastro antes de qualquer coisa:
+- `BUILTIN_WORDBUILD_SUBJECTS` — 8 palavras curtas de vocabulário
+  inicial de CAA (BOLA, CASA, SOL, GATO, AGUA, PAO, MAE, SUCO), só
+  emoji (sem foto, não depende de nenhum arquivo).
+- `BUILTIN_MATCHLINES_SUBJECTS` — 3 pares de cada tipo de relação
+  (idêntico/categoria/associativo, 9 no total), também só emoji —
+  liberado pra bastar sozinho os 3 níveis do jogo (cada nível exige
+  pelo menos 2 pares daquele tipo, ver `GamesView`).
+- `BUILTIN_COLORING_SUBJECTS` — 3 figuras em arte de linha, mesmo
+  padrão do `BUILTIN_PUZZLE_SUBJECTS` (arquivos reais em
+  `frontend/public/coloring-subjects/`, `imageSrc` em vez de
+  `imageData`): "Tuti desenhando", "Dinossaurinho", "Tuti na praia".
+
+**Diferente do quebra-cabeça/memória, esses 3 embutidos NÃO aparecem
+nem são editáveis dentro de `WordBuildManager`/`MatchLinesManager`/
+`ColoringManager`** (a Área dos pais → aba Jogos) — só o que o pai
+cadastrou de verdade (`wordbuildSubjects`/`matchlinesSubjects`/
+`coloringSubjects`, salvos no `localStorage`) aparece lá, pra não
+arriscar alguém "remover" sem querer uma palavra/par/figura embutida
+que na verdade não está salva em lugar nenhum editável (viraria um
+comportamento confuso: o item sumiria da lista mas voltaria sozinho no
+próximo carregamento, já que é uma constante do código, não um dado
+removível). O merge com o embutido acontece só na hora de **jogar**
+(`allWordbuildSubjects`/`allMatchlinesSubjects`/`allColoringSubjects`,
+`useMemo` em `TEAjudoApp`, mesmo espírito do `allSubjects` do
+quebra-cabeça/memória), passado pra `GamesView`/`ActivitiesView` — a
+`ParentArea`/`GamesManager` continua recebendo as listas "cruas", só
+com o que é de fato editável.
+
+**Ligar os Itens ganhou uma explicação de cada tipo de relação na hora
+de cadastrar** — `MATCHLINES_RELATION_META` ganhou um campo
+`description` por tipo (explicando a hierarquia real do VB-MAPP em
+linguagem simples: idêntico = mesma coisa; categoria = coisas
+diferentes do mesmo grupo; associativo = relação de uso/função, mesmo
+sendo coisas bem diferentes), mostrado dinamicamente em
+`MatchLinesManager` logo abaixo dos botões de escolha do tipo — troca
+junto com a seleção, sem precisar abrir nenhum texto de ajuda à parte.
+
+**Paleta de pintura dobrou de tamanho** (`PAINT_PALETTE`, 10 → 20
+cores) — pedido explícito do usuário. As 10 originais continuam nas
+mesmas posições (nada muda pra quem já pintava), as 10 novas
+acrescentam variedade que faltava (amarelo mais vivo, rosa claro,
+turquesa, verde limão, azul-marinho, roxo, marrom claro/tom de pele,
+cinza, bege, preto puro).
+
 ## Modo escuro
 `settings.theme` (`'light' | 'dark'`, padrão `'light'`) — toggle em
 `SettingsPanel` (card "Aparência", ícones `Sun`/`Moon`), aplicado via
