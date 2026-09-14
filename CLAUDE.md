@@ -795,6 +795,44 @@ observada nos navegadores que puderam ser testados de verdade (Chrome,
 Firefox). `URL.revokeObjectURL` roda ao terminar/dar erro pra não
 vazar memória.
 
+**Bug real encontrado e corrigido: som de conclusão do Formar a Palavra
+(e, em tese, qualquer chamada de voz nesse app) podia ficar mudo em
+silêncio, sem nenhum aviso, quando o autoplay era bloqueado.**
+Relatado pelo usuário como "não está reproduzindo ao concluir". A causa
+raiz **não** é a mesma coisa documentada acima (aquilo era só limitação
+do WebKit do Playwright em teste) — esse aqui é um bug de verdade,
+confirmado em Chromium normal: `playPhrase` (em `TEAjudoApp`, chamada
+por todo botão do `ChildPanel` e também pelo `onPlayPhrase` do
+`WordBuildBoard` ao completar a palavra) já tinha o mesmo padrão
+`await fetch('/api/tts')` seguido de `playAudioBase64(...)` usado em
+toda parte — só que **sem passar o callback `onBlocked`** que
+`playAudioBase64` já aceitava (usado só na `WelcomeScreen` até então).
+Bloqueio de autoplay não é só "sem gesto nenhum" — é sobre a "ativação
+do usuário" (transient activation) ainda estar válida no momento exato
+de `audio.play()`, e essa janela é curta (poucos segundos no Chrome).
+Um `await fetch` pro `/api/tts` que demore o suficiente (backend
+"acordando" no Render depois de ficar inativo, rede lenta, ou só a
+latência normal da ElevenLabs somada ao tempo de resposta) é o
+bastante pra estourar essa janela **mesmo o toque em si tendo sido um
+gesto de verdade** — `audio.play()` então rejeita com `NotAllowedError`,
+e sem `onBlocked` isso caía no `.catch()` de `playAudioBase64` que só
+chama `onEnd` (limpa o estado de "tocando") e não faz mais nada:
+silêncio total, sem retry, sem aviso. **Confirmado via Playwright**
+(Chromium com `--autoplay-policy=user-gesture-required`, mockando
+`window.fetch` pra simular alguns segundos de atraso na resposta do
+`/api/tts`) — sem o `onBlocked`, `speechSynthesis.speak` nunca era
+chamado; com ele, é chamado corretamente. Corrigido em `playPhrase`:
+todo `playAudioBase64(audioBase64, finish)` virou
+`playAudioBase64(audioBase64, finish, onBlocked)`, com
+`onBlocked = () => fallbackSpeak(button.phrase, finish)` — cai pra voz
+nativa do aparelho (que não é regida pelas mesmas regras de autoplay
+dos elementos `<audio>`) em vez de ficar muda. Isso conserta o problema
+em **qualquer** chamador de `playPhrase`, não só o `WordBuildBoard` —
+os botões normais do `ChildPanel` tinham exatamente a mesma
+vulnerabilidade latente (confirmado no mesmo teste), só que menos
+visível porque a resposta da ElevenLabs costuma ser rápida o
+suficiente na maioria das vezes.
+
 `TutiBubble` (componente reutilizável, recebe `phrase`/`tabKey` —
 arquitetado pra qualquer aba que não seja o `ChildPanel`; usado em
 `GamesView` e `ActivitiesView`, uma aba nova no futuro só precisa

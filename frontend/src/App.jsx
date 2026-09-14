@@ -1134,10 +1134,27 @@ export default function TEAjudoApp() {
     const safetyTimeout = setTimeout(clearPlaying, 6000);
     const finish = () => { clearTimeout(safetyTimeout); clearPlaying(); };
 
+    // Se o navegador bloquear audio.play() (autoplay policy), cai pra voz
+    // nativa do aparelho em vez de ficar em silêncio sem nenhum feedback —
+    // SpeechSynthesis não é regida pelas mesmas regras de autoplay dos
+    // elementos <audio>/<video>, então funciona mesmo sem gesto recente.
+    // Achado real (não só teórico): em qualquer lugar que dispara o áudio
+    // de forma indireta (ex: um useEffect reagindo a uma mudança de estado,
+    // não um onClick direto — como o som ao completar o Formar a Palavra),
+    // o tempo do round-trip até o /api/tts (rede lenta, backend
+    // "acordando" no Render) pode ser suficiente pra "ativação do usuário"
+    // (transient activation, curta no Chrome) expirar antes do audio.play()
+    // ser chamado — mesmo o toque em si tendo sido um gesto de verdade.
+    // Confirmado via Playwright (Chromium, --autoplay-policy=user-gesture-
+    // required) simulando alguns segundos de atraso na resposta do /api/tts:
+    // audio.play() rejeita com NotAllowedError, e sem esse onBlocked o app
+    // ficava mudo sem nenhum aviso nem retentativa.
+    const onBlocked = () => fallbackSpeak(button.phrase, finish);
+
     if (voiceEnabled) {
       const cached = audioCache[button.id];
       if (cached && cached.text === button.phrase && cached.v === AUDIO_CACHE_VERSION) {
-        playAudioBase64(cached.audioBase64, finish);
+        playAudioBase64(cached.audioBase64, finish, onBlocked);
         return;
       }
       try {
@@ -1148,7 +1165,7 @@ export default function TEAjudoApp() {
         });
         if (!resp.ok) throw new Error('status ' + resp.status);
         const { audioBase64 } = await resp.json();
-        playAudioBase64(audioBase64, finish);
+        playAudioBase64(audioBase64, finish, onBlocked);
         setAudioCache((prev) => {
           const next = { ...prev, [button.id]: { text: button.phrase, v: AUDIO_CACHE_VERSION, audioBase64 } };
           saveJSON('teajudo:audio-cache', next);
