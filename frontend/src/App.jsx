@@ -1357,6 +1357,12 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
   const [forgotNovaSenha, setForgotNovaSenha] = useState('');
   const [demoCode, setDemoCode] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState(false);
+  // Quando o e-mail digitado em "esqueci minha senha" não tem conta —
+  // decisão explícita do usuário: avisar na hora e oferecer criar conta
+  // com esse mesmo e-mail ou voltar pro login, em vez de deixar a pessoa
+  // pedir um código que nunca vai servir pra nada. Checado via
+  // POST /api/auth/check-email, ANTES de pedir o código de verdade.
+  const [noAccountFound, setNoAccountFound] = useState(false);
 
   function backToLogin() {
     setMode('login');
@@ -1367,6 +1373,7 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
     setSenha('');
     setShowSenha(false);
     setShowNovaSenha(false);
+    setNoAccountFound(false);
   }
 
   async function handleSubmit(e) {
@@ -1403,10 +1410,26 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
 
   async function handleForgotSendCode() {
     setError('');
+    setNoAccountFound(false);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) { setError('Digite um e-mail válido.'); return; }
     setForgotCode(''); setDemoCode('');
     setLoading(true);
     try {
+      // Confere se existe conta com esse e-mail ANTES de pedir o código —
+      // sem isso, a pessoa só descobriria que não tem conta depois de
+      // esperar o código chegar (ou nunca chegar) e digitar ele.
+      const checkResp = await fetch(`${API_URL}/api/auth/check-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const checkData = await checkResp.json().catch(() => ({}));
+      if (!checkResp.ok) throw new Error(checkData.error || 'status ' + checkResp.status);
+      if (!checkData.exists) {
+        setNoAccountFound(true);
+        return;
+      }
+
       const resp = await fetch(`${API_URL}/api/auth/send-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1421,6 +1444,18 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleCreateAccountFromForgot() {
+    setEmail(forgotEmail);
+    setMode('register');
+    setError('');
+    setNoAccountFound(false);
+  }
+
+  function handleBackToLoginFromForgot() {
+    setEmail(forgotEmail);
+    backToLogin();
   }
 
   async function handleResetPassword() {
@@ -1472,7 +1507,7 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
             <p className="text-[#5A5A5A] mb-6 text-sm">Informe o e-mail da sua conta para receber um código de verificação.</p>
             <input
               value={forgotEmail}
-              onChange={(e) => setForgotEmail(e.target.value)}
+              onChange={(e) => { setForgotEmail(e.target.value); setNoAccountFound(false); }}
               type="email"
               placeholder="email@exemplo.com"
               autoCapitalize="none"
@@ -1480,13 +1515,32 @@ function AuthGate({ onAuthenticated, settings, onSaveSettings }) {
               className="border border-[#DDD] rounded-xl px-4 py-3 text-center w-full mb-3"
             />
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
-            <button
-              onClick={handleForgotSendCode}
-              disabled={loading}
-              className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold mb-2 disabled:opacity-60 transition-transform active:scale-95"
-            >
-              {loading ? 'Enviando…' : 'Enviar código'}
-            </button>
+            {noAccountFound ? (
+              <div className="tea-popin bg-[#FBEFE7] border border-[#E4A93B] rounded-xl p-4 mb-2 text-left">
+                <p className="text-sm text-[#B15E3E] font-semibold mb-1">Não encontramos nenhuma conta com esse e-mail.</p>
+                <p className="text-xs text-[#5A5A5A] mb-3">Confira se digitou certo, ou escolha uma opção abaixo:</p>
+                <button
+                  onClick={handleCreateAccountFromForgot}
+                  className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-2.5 font-semibold text-sm mb-2 transition-transform active:scale-95"
+                >
+                  Criar conta com esse e-mail
+                </button>
+                <button
+                  onClick={handleBackToLoginFromForgot}
+                  className="w-full bg-white border border-[#DDD] rounded-xl py-2.5 font-semibold text-sm text-[#5A5A5A] transition-transform active:scale-95"
+                >
+                  Voltar para o login
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleForgotSendCode}
+                disabled={loading}
+                className="tea-shimmer-btn w-full bg-[#2F6F62] text-white rounded-xl py-3 font-semibold mb-2 disabled:opacity-60 transition-transform active:scale-95"
+              >
+                {loading ? 'Enviando…' : 'Enviar código'}
+              </button>
+            )}
           </>
         ) : (
           <>

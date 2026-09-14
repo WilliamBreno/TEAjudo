@@ -299,6 +299,7 @@ de sessão — ver "Login dos responsáveis" abaixo).
 | `/api/health` | GET | — | `{ ok: true }` |
 | `/api/tts` | POST | `{ text }` | `{ audioBase64 }` |
 | `/api/tts/status` | GET | — | `{ configured: boolean }` |
+| `/api/auth/check-email` | POST | `{ email }` | `{ exists: boolean }` — ver nota de segurança abaixo |
 | `/api/auth/send-code` | POST | `{ email }` | `{ ok, demo, code? }` — `code` só vem preenchido se `demo: true` (SendGrid não configurado) |
 | `/api/auth/verify-code` | POST | `{ email, code }` | `{ valid: boolean, reason? }` |
 | `/api/auth/status` | GET | — | `{ mailerConfigured: boolean }` |
@@ -409,6 +410,29 @@ senha" no fluxo "esqueci a senha") têm um botão de olhinho
 `type="password"`/`type="text"` — não existe em campos de PIN (esses
 são numéricos de 4-6 dígitos, conceito diferente de senha de conta, sem
 esse alternador).
+
+**"Esqueci minha senha" avisa na hora se o e-mail não tem conta, em vez
+de deixar a pessoa pedir um código que nunca vai servir.** Antes de
+chamar `/api/auth/send-code`, o frontend chama
+`POST /api/auth/check-email` (`{ email } → { exists: boolean }`); se
+`exists: false`, mostra um alerta com duas opções — "Criar conta com
+esse e-mail" (pré-preenche o campo de e-mail do cadastro,
+`handleCreateAccountFromForgot`) ou "Voltar para o login" (idem, pro
+campo de e-mail do login, `handleBackToLoginFromForgot`) — sem nunca
+chegar a mandar/pedir um código de verificação. **Isso é uma troca
+deliberada de segurança, feita a pedido explícito do usuário**: antes,
+`POST /api/auth/reset-password` usava a mesma mensagem genérica
+(`reason: 'not_found'`) tanto pra "código errado" quanto pra "esse
+e-mail não tem conta nenhuma" — de propósito, pra não revelar quais
+e-mails têm conta cadastrada (prevenção de enumeração de usuários, uma
+prática comum de segurança). O endpoint `/api/auth/check-email` existe
+só pra esse fluxo específico e reverte essa proteção — decisão aceitável
+pra um app de CAA (não um sistema bancário ou algo de alto risco), mas
+é uma troca de fato, registrada aqui pra não ser reintroduzida sem
+pensar caso outro fluxo (ex: recuperação de PIN, que usa `/send-code`
+genérico pra um e-mail que não é necessariamente de conta) precise da
+mesma checagem — nesse caso, repensar se faz sentido revelar existência
+ali também antes de simplesmente reaproveitar o endpoint.
 
 ## Domínio próprio (teajudo.social.br)
 Registrado no Registro.br, DNS gerenciado lá mesmo (zona avançada, sem

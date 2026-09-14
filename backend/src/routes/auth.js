@@ -12,6 +12,24 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SENHA_MIN_LEN = 8;
 const BCRYPT_ROUNDS = 10;
 
+// Usado só pelo fluxo "esqueci minha senha" no frontend, ANTES de pedir o
+// código — decisão explícita do usuário, trocando a ambiguidade
+// deliberada que existia antes (reason: 'not_found' genérico em
+// /reset-password, que não distinguia "sem conta" de "código errado" pra
+// não vazar quais e-mails têm conta). Prioriza avisar cedo e oferecer
+// criar conta/voltar pro login em vez de manter essa proteção de
+// enumeração — troca aceitável pra um app de CAA, não um sistema
+// bancário. Não usar em nenhum outro fluxo (ex: recuperação de PIN, que
+// não é sobre e-mail de conta) sem repensar essa mesma decisão.
+router.post('/check-email', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email || !EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'E-mail inválido.' });
+  }
+  const responsavel = await findByEmail(email);
+  res.json({ exists: !!responsavel });
+});
+
 router.post('/send-code', async (req, res) => {
   const { email } = req.body || {};
   if (!email || !EMAIL_RE.test(email)) {
