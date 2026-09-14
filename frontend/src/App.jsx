@@ -5,7 +5,7 @@ import {
   Hand, User, Users, Smile, Frown, Laugh, CircleDot, MessageCircle, HelpCircle,
   ThumbsUp, ThumbsDown, Check, Utensils, GlassWater, Bath, Home, Car, Music,
   Heart, Star, Sun, Moon, Volume2, Bed, Tv, Palette, Paintbrush, PaintBucket, Eraser,
-  ArrowLeft, ArrowRight, Eye, EyeOff,
+  ArrowLeft, ArrowRight, Eye, EyeOff, Pencil,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -259,6 +259,7 @@ const GLOBAL_STYLES = `
   [data-theme="dark"] .bg-white { background-color: #22242B !important; }
   [data-theme="dark"] .bg-\\[\\#FAF7F2\\] { background-color: #14151A !important; }
   [data-theme="dark"] .bg-\\[\\#F3F0EA\\] { background-color: #2A2C34 !important; }
+  [data-theme="dark"] .bg-\\[\\#FFF8E8\\] { background-color: #332C1A !important; }
   [data-theme="dark"] .text-\\[\\#2B2B2B\\] { color: #F4F4F5 !important; }
   [data-theme="dark"] .text-\\[\\#5A5A5A\\] { color: #B8BAC2 !important; }
   [data-theme="dark"] .text-\\[\\#999\\] { color: #8A8D97 !important; }
@@ -4626,6 +4627,10 @@ function ButtonsManager({ buttons, onSave }) {
   const [minimalIcon, setMinimalIcon] = useState(null);
   const [imageData, setImageData] = useState(null);
   const [startLocked, setStartLocked] = useState(false);
+  // null = cadastrando um botão novo; um id = editando esse botão
+  // existente (o mesmo assistente serve pros dois casos, só muda o que
+  // acontece ao salvar no passo 4 — ver saveButton).
+  const [editingId, setEditingId] = useState(null);
 
   function handleImage(e) {
     const file = e.target.files?.[0];
@@ -4644,11 +4649,51 @@ function ButtonsManager({ buttons, onSave }) {
 
   const effectiveMinimalIcon = minimalIcon || CATEGORY_DEFAULT_ICON[category];
 
-  function addButton() {
+  function resetWizard() {
+    setLabel(''); setPhrase(''); setImageData(null); setMinimalIcon(null);
+    setCategory('acoes'); setColor(CATEGORY_META['acoes'].color);
+    setIconMode('emoji'); setEmoji('⭐'); setStartLocked(false);
+    setStep(1);
+    setShowCustomColor(false);
+    setEditingId(null);
+  }
+
+  // Preenche o assistente inteiro com os dados de um botão já existente
+  // e volta pro passo 1 — mesmo formulário do cadastro, só que salvar no
+  // final atualiza em vez de criar um novo (ver saveButton).
+  function startEdit(b) {
+    setEditingId(b.id);
+    setLabel(b.label);
+    setPhrase(b.phrase === b.label ? '' : b.phrase);
+    setCategory(b.category);
+    setColor(b.color || CATEGORY_META[b.category].color);
+    // Só abre o seletor de cor personalizada se a cor salva já não for a
+    // sugestão padrão da categoria — senão o passo 2 mostraria o link
+    // "quero escolher uma cor diferente" fechado por padrão, igual ao
+    // cadastro novo.
+    setShowCustomColor(!!b.color && b.color !== CATEGORY_META[b.category].color);
+    if (b.imageData) {
+      setIconMode('foto');
+      setImageData(b.imageData);
+    } else if (b.iconVariant === 'minimal') {
+      setIconMode('minimal');
+      setMinimalIcon(b.minimalIcon || null);
+    } else {
+      setIconMode('emoji');
+      setEmoji(b.emoji || '⭐');
+    }
+    setStartLocked(!!b.locked);
+    setStep(1);
+  }
+
+  function cancelEdit() {
+    resetWizard();
+  }
+
+  function saveButton() {
     if (!label.trim()) return;
     if (iconMode === 'foto' && !imageData) return;
-    const newButton = {
-      id: 'b' + Date.now(),
+    const buttonData = {
       label: label.trim(),
       phrase: phrase.trim() || label.trim(),
       category,
@@ -4661,14 +4706,19 @@ function ButtonsManager({ buttons, onSave }) {
       imageData: iconMode === 'foto' ? imageData : null,
       locked: startLocked,
     };
-    onSave([...buttons, newButton]);
-    setLabel(''); setPhrase(''); setImageData(null); setMinimalIcon(null);
-    setStep(1);
-    setShowCustomColor(false);
+    if (editingId) {
+      onSave(buttons.map((b) => (b.id === editingId ? { ...b, ...buttonData } : b)));
+    } else {
+      onSave([...buttons, { id: 'b' + Date.now(), ...buttonData }]);
+    }
+    resetWizard();
   }
 
   function removeButton(id) {
     onSave(buttons.filter((b) => b.id !== id));
+    // Excluir o botão que estava sendo editado nesse instante deixaria o
+    // assistente "editando" algo que não existe mais.
+    if (editingId === id) resetWizard();
   }
 
   function toggleLock(id) {
@@ -4694,6 +4744,12 @@ function ButtonsManager({ buttons, onSave }) {
   return (
     <div>
       <div className="bg-white rounded-2xl border border-[#EADFCB] p-4 mb-6">
+        {editingId && (
+          <div className="tea-popin flex items-center justify-between gap-2 bg-[#EAF3F0] border border-[#2F6F62] rounded-xl px-3 py-2 mb-4 text-sm">
+            <span className="text-[#2F6F62] font-semibold flex items-center gap-1.5"><Pencil size={14} /> Editando um botão existente</span>
+            <button onClick={cancelEdit} className="text-[#5A5A5A] underline shrink-0">Cancelar</button>
+          </div>
+        )}
         {/* Prévia do botão — sempre visível, atualiza em tempo real (mesmo
             estilo neon do botão de verdade, não uma caixa lisa) */}
         <div className="flex flex-col items-center mb-6">
@@ -4893,11 +4949,18 @@ function ButtonsManager({ buttons, onSave }) {
 
         {step === 4 && (
           <div className="tea-fadein mb-4 space-y-4">
-            <div className="bg-[#F8F5EE] rounded-xl p-3 text-sm space-y-1">
-              <p><span className="text-[#999]">Botão:</span> <strong>{label || '—'}</strong></p>
-              <p><span className="text-[#999]">Fala:</span> <strong>{phrase.trim() || label || '—'}</strong></p>
-              <p><span className="text-[#999]">Categoria:</span> <strong>{CATEGORY_META[category].label}</strong></p>
-              <p><span className="text-[#999]">Imagem:</span> <strong>{iconMode === 'foto' ? 'Foto' : iconMode === 'minimal' ? 'Ícone minimalista' : 'Emoji'}</strong></p>
+            {/* bg-[#F3F0EA]/text-[#2B2B2B] em vez de bg-[#F8F5EE]/<strong>
+                sem classe — as duas eram cores "soltas" fora da lista que
+                o modo escuro escurece (ver seção "Modo escuro" no
+                CLAUDE.md), então o texto (herdando o branco forçado da
+                raiz em dark) ficava branco sobre um fundo que continuava
+                claro: invisível. Reaproveitar classes já cobertas resolve
+                sem precisar adicionar mais uma regra ao CSS do tema. */}
+            <div className="bg-[#F3F0EA] rounded-xl p-3 text-sm space-y-1">
+              <p><span className="text-[#999]">Botão:</span> <strong className="text-[#2B2B2B]">{label || '—'}</strong></p>
+              <p><span className="text-[#999]">Fala:</span> <strong className="text-[#2B2B2B]">{phrase.trim() || label || '—'}</strong></p>
+              <p><span className="text-[#999]">Categoria:</span> <strong className="text-[#2B2B2B]">{CATEGORY_META[category].label}</strong></p>
+              <p><span className="text-[#999]">Imagem:</span> <strong className="text-[#2B2B2B]">{iconMode === 'foto' ? 'Foto' : iconMode === 'minimal' ? 'Ícone minimalista' : 'Emoji'}</strong></p>
             </div>
             <label className="flex items-center gap-2 text-sm text-[#5A5A5A]">
               <input type="checkbox" checked={startLocked} onChange={(e) => setStartLocked(e.target.checked)} />
@@ -4924,10 +4987,10 @@ function ButtonsManager({ buttons, onSave }) {
             </button>
           ) : (
             <button
-              onClick={addButton}
+              onClick={saveButton}
               className="tea-shimmer-btn bg-[#2F6F62] text-white rounded-xl px-5 py-2.5 font-semibold flex items-center gap-1.5 transition-transform active:scale-95"
             >
-              <Check size={16} /> Salvar botão
+              <Check size={16} /> {editingId ? 'Salvar alterações' : 'Salvar botão'}
             </button>
           )}
         </div>
@@ -4940,7 +5003,7 @@ function ButtonsManager({ buttons, onSave }) {
           const btnColor = b.color || CATEGORY_META[b.category].color;
           const ItemMinimalIcon = getMinimalIcon(b);
           return (
-            <div key={b.id} className={`flex items-center justify-between bg-white border rounded-xl px-3 py-2 ${b.locked ? 'border-dashed border-[#DDD] opacity-80' : 'border-[#EADFCB]'}`}>
+            <div key={b.id} className={`flex items-center justify-between bg-white border rounded-xl px-3 py-2 ${editingId === b.id ? 'border-2 border-[#2F6F62]' : b.locked ? 'border-dashed border-[#DDD] opacity-80' : 'border-[#EADFCB]'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: btnColor }} />
                 {b.imageData
@@ -4954,6 +5017,14 @@ function ButtonsManager({ buttons, onSave }) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => startEdit(b)}
+                  className="p-1.5 rounded-lg text-[#5A5A5A] hover:bg-[#F3F0EA] transition-colors"
+                  aria-label="Editar botão"
+                  title="Editar"
+                >
+                  <Pencil size={16} />
+                </button>
                 <button
                   onClick={() => toggleLock(b.id)}
                   className="p-1.5 rounded-lg text-[#5A5A5A] hover:bg-[#F3F0EA] transition-colors"
@@ -5410,7 +5481,7 @@ function ReadinessCard({ readiness, onGoToButtons }) {
           <Sparkles size={20} />
         </div>
         <div className="flex-1">
-          <h3 className="font-bold mb-1">
+          <h3 className="font-bold mb-1 text-[#2B2B2B]">
             {ready ? 'Seu filho pode estar pronto para mais botões' : 'Acompanhando o progresso'}
           </h3>
           <p className="text-sm text-[#5A5A5A] mb-3">

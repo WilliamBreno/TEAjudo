@@ -858,6 +858,29 @@ então continua legível sozinha sobre o cabeçalho escuro; a condição do
 pedido original ("se tiver fundo branco sólido, adicione um chip") não
 se aplicou.
 
+**Mais três instâncias do mesmo bug de retrofit encontradas depois**
+(fundo "solto" fora da lista coberta + texto sem classe própria, herdando
+o branco forçado da raiz — texto invisível sobre fundo que continuava
+claro): a caixa de revisão do passo 4 do assistente de botões
+(`ButtonsManager`, usava `bg-[#F8F5EE]` com `<strong>` sem classe de cor —
+trocado pra `bg-[#F3F0EA]` já coberta + `text-[#2B2B2B]` explícito em cada
+`<strong>`) e o título do `ReadinessCard` (`<h3>` sem `text-[#2B2B2B]`,
+corrigido). O `ReadinessCard` tinha uma **segunda** ocorrência do mesmo
+bug que só apareceu depois, testando o estado `ready: true` (fundo
+`bg-[#FFF8E8]`, cor usada só pra destaque/"pronto para liberar" e pras
+caixas de código de demonstração em `AuthGate`/`SecuritySetup`) — como
+`bg-[#FFF8E8]` não estava na lista coberta, o mesmo texto forçado a
+quase-branco (`text-[#2B2B2B]` → `#F4F4F5`) ficava invisível em cima dela.
+Em vez de corrigir só o `<h3>` de novo, dessa vez `bg-[#FFF8E8]` entrou
+pra lista coberta em `GLOBAL_STYLES` (→ `#332C1A`, um marrom-âmbar escuro
+que combina com a borda `#E4A93B` que já não muda), resolvendo os 3
+lugares que usam essa cor de uma vez — mesmo espírito de "cobrir a classe,
+não o componente" do resto desta seção. **Lição prática pra próxima
+revisão de modo escuro**: não basta testar o estado "de sempre" de um
+componente condicional — precisa forçar cada branco condicional
+(`ready`/`locked`/`demoCode` etc.) que troca de classe de fundo, porque
+cada um pode estar usando uma cor "solta" diferente das outras.
+
 Testado visualmente (Playwright) em todas as telas principais no
 escuro: `AuthGate`, `ChildPanel`, as 4 abas da Área dos pais (Botões,
 Jogos, Configurações, Análise — gráficos do Recharts incluídos) e a
@@ -1018,7 +1041,22 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
   bebida, Sentimentos, Ações, Rotina e lugares, Diversão, Ajuda e
   social, Outros) em vez da grade única do mockup — pedido explícito à
   parte, mais fácil de achar um emoji específico com mais opções
-  disponíveis.
+  disponíveis. **O mesmo assistente de 4 passos serve tanto pra criar
+  quanto pra editar um botão existente** — `ButtonsManager` ganhou um
+  estado `editingId` (`null` = criando; um id = editando); o ícone de
+  lápis em cada item da lista ("Ativos"/"Bloqueados") chama `startEdit(b)`,
+  que pré-preenche todos os campos do assistente a partir do botão
+  (inclusive inferindo se a cor é "personalizada" comparando com a cor
+  padrão da categoria, e qual modo de imagem usar, olhando qual dos
+  campos `imageData`/`iconVariant`/`emoji` está preenchido). Um banner
+  "Editando um botão existente" com "Cancelar" aparece no topo do
+  assistente nesse modo, e "Salvar botão" vira "Salvar alterações" — a
+  função que salva (`saveButton`, antiga `addButton`) atualiza o item no
+  lugar (preservando o `id`) em vez de criar um novo. Reaproveitar o
+  mesmo wizard em vez de criar um formulário de edição separado evita
+  duplicar toda a lógica dos 4 passos (validação, prévia em tempo real,
+  agrupamento de emoji etc.) só pra um fluxo que é essencialmente o
+  mesmo.
 - **Figuras dos jogos são fotos reais, não emoji** — quebra-cabeça e
   jogo da memória usam `imageSrc`/`imageData` (nunca mais um emoji
   desenhado em canvas). Emoji é um símbolo abstrato — reconhecer que
@@ -1128,7 +1166,7 @@ Vêm de práticas reais de CAA/TEA — documentando o "porquê":
 | Confete ao concluir | `ConfettiBurst` |
 | Portão da área dos pais (PIN) | `ParentGate` |
 | Configuração de segurança (e-mail → código → novo PIN, via backend) | `SecuritySetup` |
-| Cadastro de botões (ícone OU foto, cor individual, bloqueio/liberação) | `ButtonsManager` |
+| Cadastro/edição de botões (ícone OU foto, cor individual, bloqueio/liberação) | `ButtonsManager` |
 | Figuras personalizadas para os jogos | `GamesManager` |
 | Repertório de palavras do jogo Formar a Palavra | `WordBuildManager` (dentro de `GamesManager`) |
 | Repertório de pares do jogo Ligar os Itens | `MatchLinesManager` (dentro de `GamesManager`) |
@@ -1177,7 +1215,8 @@ deveria sobreviver a um logout.
       Prisma, por exemplo) se precisar sincronizar entre o tablet da
       criança e o celular dos pais
 - [ ] Quebrar `frontend/src/App.jsx` em múltiplos arquivos/componentes
-- [ ] Editar botões existentes (hoje só dá para adicionar/remover/bloquear)
+- [x] Editar botões existentes — mesmo assistente de 4 passos usado pra
+      criar, ver "Decisões de design" acima
 - [ ] Editar/remover figuras personalizadas fica só em `GamesManager` —
       falta indicar visualmente quando uma figura está "em uso" antes de
       deixar remover (hoje remove sem avisar)
